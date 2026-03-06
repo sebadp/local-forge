@@ -469,3 +469,65 @@ class TestManageProcess:
             or "unknown" in result.content.lower()
             or "use:" in result.content.lower()
         )
+
+
+# ---------------------------------------------------------------------------
+# Argument-level security validation
+# ---------------------------------------------------------------------------
+
+
+class TestArgumentValidation:
+    """Argument-level security checks for allowlisted interpreters and package managers."""
+
+    def test_deny_python_dash_c(self):
+        assert _validate_command("python -c 'print(1)'", _ALLOWLIST) == CommandDecision.DENY
+
+    def test_deny_python3_dash_c(self):
+        # python3 resolves to base_cmd="python3"; not in allowlist by default but
+        # if added, the check must fire. Use a custom allowlist for this test.
+        allowlist = frozenset(_ALLOWLIST | {"python3"})
+        assert _validate_command("python3 -c 'import os'", allowlist) == CommandDecision.DENY
+
+    def test_deny_node_dash_e(self):
+        assert _validate_command("node -e 'console.log(1)'", _ALLOWLIST) == CommandDecision.DENY
+
+    def test_deny_node_eval_flag(self):
+        assert _validate_command("node --eval 'console.log(1)'", _ALLOWLIST) == CommandDecision.DENY
+
+    def test_allow_python_dash_m(self):
+        # -m imports a module by name, not arbitrary code — must remain ALLOW
+        assert _validate_command("python -m pytest", _ALLOWLIST) == CommandDecision.ALLOW
+
+    def test_allow_python_script(self):
+        # Running a .py file (no -c) must remain ALLOW
+        assert _validate_command("python scripts/run_eval.py", _ALLOWLIST) == CommandDecision.ALLOW
+
+    def test_allow_full_path_python_dash_m(self):
+        assert _validate_command("/usr/bin/python -m pytest", _ALLOWLIST) == CommandDecision.ALLOW
+
+    def test_ask_pip_install(self):
+        # pip is no longer in the default allowlist, but if added via env,
+        # 'install' subcommand must require HITL
+        allowlist = frozenset(_ALLOWLIST | {"pip"})
+        assert _validate_command("pip install requests", allowlist) == CommandDecision.ASK
+
+    def test_allow_pip_show(self):
+        allowlist = frozenset(_ALLOWLIST | {"pip"})
+        assert _validate_command("pip show requests", allowlist) == CommandDecision.ALLOW
+
+    def test_allow_pip_list(self):
+        allowlist = frozenset(_ALLOWLIST | {"pip"})
+        assert _validate_command("pip list", allowlist) == CommandDecision.ALLOW
+
+    def test_ask_pip_download(self):
+        allowlist = frozenset(_ALLOWLIST | {"pip"})
+        assert _validate_command("pip download requests", allowlist) == CommandDecision.ASK
+
+    def test_deny_ssh_key_pattern(self):
+        assert _validate_command("cat /home/user/.ssh/id_rsa", _ALLOWLIST) == CommandDecision.DENY
+
+    def test_deny_etc_sudoers(self):
+        assert _validate_command("cat /etc/sudoers", _ALLOWLIST) == CommandDecision.DENY
+
+    def test_deny_etc_crontab(self):
+        assert _validate_command("grep -r '' /etc/crontab", _ALLOWLIST) == CommandDecision.DENY

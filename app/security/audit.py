@@ -1,4 +1,5 @@
 import hashlib
+import hmac as _hmac_mod
 import json
 import logging
 import threading
@@ -25,8 +26,9 @@ class AuditEntry(BaseModel):
 class AuditTrail:
     """Append-only cryptographic audit log for all sensitive tool executions."""
 
-    def __init__(self, log_path: Path):
+    def __init__(self, log_path: Path, hmac_key: str | None = None):
         self.log_path = log_path
+        self._hmac_key: bytes | None = hmac_key.encode("utf-8") if hmac_key else None
         self._lock = threading.Lock()
         self._last_hash = self._initialize_log()
 
@@ -52,9 +54,15 @@ class AuditTrail:
         return last_hash
 
     def _calculate_hash(self, payload: dict) -> str:
-        """Calculates SHA-256 hash of the payload."""
-        payload_str = json.dumps(payload, sort_keys=True)
-        return hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
+        """Calculate hash of the payload.
+
+        Uses HMAC-SHA256 when hmac_key is set (tamper-evident),
+        otherwise plain SHA-256 (integrity only).
+        """
+        payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
+        if self._hmac_key:
+            return _hmac_mod.new(self._hmac_key, payload_bytes, hashlib.sha256).hexdigest()
+        return hashlib.sha256(payload_bytes).hexdigest()
 
     def record(
         self,

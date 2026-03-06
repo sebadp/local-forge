@@ -64,6 +64,10 @@ _DANGEROUS_PATTERNS = frozenset(
         ":()",
         "/etc/passwd",
         "/etc/shadow",
+        "/etc/sudoers",
+        "/etc/crontab",
+        "/.ssh/",
+        "id_rsa",
         "curl | sh",
         "curl | bash",
         "wget | sh",
@@ -72,6 +76,16 @@ _DANGEROUS_PATTERNS = frozenset(
 )
 
 _SHELL_OPERATORS = frozenset({"|", ">>", "&&", "||", ";", "$(", "`"})
+
+# Flags that execute inline code strings — blocked for allowlisted interpreters
+_CODE_EXEC_FLAGS = frozenset({"-c", "-e", "--eval", "--exec"})
+
+# Subcommands that install packages — require HITL even for allowlisted package managers
+_PACKAGE_MGMT_SUBCMDS = frozenset({"install", "download", "wheel"})
+
+# Allowlisted commands for which argument-level checks apply
+_CODE_EXEC_CMDS = frozenset({"python", "python3", "node", "ruby", "perl", "php"})
+_PACKAGE_MGMT_CMDS = frozenset({"pip", "pip3", "npm", "yarn"})
 
 # ---------------------------------------------------------------------------
 # Resource limits
@@ -132,8 +146,17 @@ def _validate_command(command: str, allowlist: frozenset[str]) -> CommandDecisio
         if op in command:
             return CommandDecision.ASK
 
-    # 3. Allowlist → OK
+    # 3. Allowlist + argument-level validation
     if base_cmd in allowlist:
+        # Block inline code-execution flags for interpreter commands
+        if base_cmd in _CODE_EXEC_CMDS:
+            for tok in tokens[1:]:
+                if tok in _CODE_EXEC_FLAGS:
+                    return CommandDecision.DENY
+        # Package install subcommands require HITL even for allowlisted managers
+        if base_cmd in _PACKAGE_MGMT_CMDS:
+            if len(tokens) > 1 and tokens[1] in _PACKAGE_MGMT_SUBCMDS:
+                return CommandDecision.ASK
         return CommandDecision.ALLOW
 
     # 4. Unknown → HITL

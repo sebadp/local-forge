@@ -23,10 +23,21 @@ _SENSITIVE = {
     "whatsapp_app_secret",
     "whatsapp_verify_token",
     "ngrok_authtoken",
+    "github_token",
+    "langfuse_secret_key",
+    "langfuse_public_key",
+    "audit_hmac_key",
 }
 
 _BLOCKED_NAME_PATTERNS = {".env", "secret", "token", "password", ".key", ".pem"}
 _BLOCKED_EXT = {".pyc", ".pyo", ".db", ".sqlite", ".jpg", ".jpeg", ".png", ".gif", ".zip", ".tar"}
+
+# Config files that the agent must never overwrite (security boundaries)
+_BLOCKED_CONFIG_FILES = {
+    "mcp_servers.json",
+    "security_policies.yaml",
+    "audit_trail.jsonl",
+}
 
 
 def _is_safe_path(path: Path) -> bool:
@@ -335,6 +346,9 @@ def register(
         if not _is_safe_path(target):
             return f"Blocked: '{path}' is outside the project root or is a sensitive file."
 
+        if target.name in _BLOCKED_CONFIG_FILES:
+            return f"Blocked: '{path}' is a protected configuration file and cannot be overwritten."
+
         if target.suffix.lower() in _BLOCKED_EXT:
             return f"Blocked: Cannot write binary or database file ({target.suffix})"
 
@@ -415,6 +429,9 @@ def register(
 
         if not _is_safe_path(target):
             return f"Blocked: '{path}' is outside the project root or is a sensitive file."
+
+        if target.name in _BLOCKED_CONFIG_FILES:
+            return f"Blocked: '{path}' is a protected configuration file and cannot be modified."
 
         if target.suffix.lower() in _BLOCKED_EXT:
             return f"Blocked: Cannot patch binary or database file ({target.suffix})"

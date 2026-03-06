@@ -45,7 +45,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
 
 ### Phase 1: selfcode_tools — Sensitive fields y config files
 
-- [ ] **1.1** Ampliar `_SENSITIVE` en `app/skills/tools/selfcode_tools.py`:
+- [x] **1.1** Ampliar `_SENSITIVE` en `app/skills/tools/selfcode_tools.py`:
   ```python
   _SENSITIVE = {
       "whatsapp_access_token",
@@ -58,7 +58,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   }
   ```
 
-- [ ] **1.2** Agregar constante `_BLOCKED_CONFIG_FILES` y usarla en `write_source_file` y `apply_patch`:
+- [x] **1.2** Agregar constante `_BLOCKED_CONFIG_FILES` y usarla en `write_source_file` y `apply_patch`:
   ```python
   _BLOCKED_CONFIG_FILES = {
       "mcp_servers.json",
@@ -73,11 +73,11 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   ```
   Nota: este check va DESPUES de `_is_safe_path` y ANTES de `target.suffix` check.
 
-- [ ] **1.3** Verificar que `preview_patch` NO necesita el mismo check (no modifica archivos, solo preview — dejar como esta por ser read-only).
+- [x] **1.3** Verificar que `preview_patch` NO necesita el mismo check (no modifica archivos, solo preview — dejar como esta por ser read-only).
 
 ### Phase 2: shell_tools — Argument validation y dangerous patterns
 
-- [ ] **2.1** Agregar set de flags de code-execution bloqueados en `shell_tools.py`:
+- [x] **2.1** Agregar set de flags de code-execution bloqueados en `shell_tools.py`:
   ```python
   # Flags que permiten ejecucion de codigo inline
   _CODE_EXEC_FLAGS = frozenset({"-c", "-e", "--eval", "--exec"})
@@ -90,7 +90,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   _PACKAGE_MGMT_CMDS = frozenset({"pip", "pip3", "npm", "yarn"})
   ```
 
-- [ ] **2.2** En `_validate_command`, agregar un paso ENTRE la allowlist check y el return ALLOW:
+- [x] **2.2** En `_validate_command`, agregar un paso ENTRE la allowlist check y el return ALLOW:
   ```python
   # 3. Allowlist → validacion adicional de argumentos
   if base_cmd in allowlist:
@@ -107,7 +107,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   ```
   El orden queda: DENYLIST → DANGEROUS_PATTERNS → SHELL_OPERATORS → ALLOWLIST+ARG_VALIDATION → ASK.
 
-- [ ] **2.3** Ampliar `_DANGEROUS_PATTERNS` con rutas adicionales:
+- [x] **2.3** Ampliar `_DANGEROUS_PATTERNS` con rutas adicionales:
   ```python
   _DANGEROUS_PATTERNS = frozenset(
       {
@@ -128,11 +128,11 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   )
   ```
 
-- [ ] **2.4** Actualizar docstring de `_validate_command` para documentar el nuevo paso.
+- [x] **2.4** Actualizar docstring de `_validate_command` para documentar el nuevo paso.
 
 ### Phase 3: policy_engine — Fail-secure default
 
-- [ ] **3.1** En `PolicyEngine._load_policy()`, cambiar el default cuando falta el archivo:
+- [x] **3.1** En `PolicyEngine._load_policy()`, cambiar el default cuando falta el archivo:
   ```python
   if not self.policy_path.exists():
       logger.warning(
@@ -146,7 +146,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   ```
   Nota: el mensaje de WARNING ya existe, solo cambia `PolicyAction.ALLOW` → `PolicyAction.BLOCK`.
 
-- [ ] **3.2** Agregar comentario en `data/security_policies.yaml.example` (crear si no existe):
+- [x] **3.2** Agregar comentario en `data/security_policies.yaml.example` (crear si no existe):
   ```yaml
   # Si este archivo no existe, el PolicyEngine rechaza TODAS las tool calls agénticas.
   # Copia este archivo a data/security_policies.yaml y ajusta las reglas.
@@ -157,7 +157,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
 
 ### Phase 4: audit — HMAC opcional
 
-- [ ] **4.1** Modificar firma de `AuditTrail.__init__`:
+- [x] **4.1** Modificar firma de `AuditTrail.__init__`:
   ```python
   def __init__(self, log_path: Path, hmac_key: str | None = None):
       self.log_path = log_path
@@ -166,7 +166,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
       self._last_hash = self._initialize_log()
   ```
 
-- [ ] **4.2** Modificar `_calculate_hash`:
+- [x] **4.2** Modificar `_calculate_hash`:
   ```python
   def _calculate_hash(self, payload: dict) -> str:
       payload_str = json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -176,7 +176,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
       return hashlib.sha256(payload_str).hexdigest()
   ```
 
-- [ ] **4.3** En `executor.py`, pasar `hmac_key` desde settings al crear `AuditTrail`:
+- [x] **4.3** En `executor.py`, pasar `hmac_key` desde settings al crear `AuditTrail`:
   ```python
   # En get_audit_trail(), leer settings.audit_hmac_key si existe
   # Para no romper la inicializacion actual, hacer lookup lazy de settings:
@@ -184,14 +184,14 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
   ```
   Usar `os.getenv("AUDIT_HMAC_KEY")` directamente para no cambiar la firma de `get_audit_trail()`.
 
-- [ ] **4.4** Agregar `AUDIT_HMAC_KEY` como campo opcional en `Settings`:
+- [x] **4.4** Agregar `AUDIT_HMAC_KEY` como campo opcional en `Settings`:
   ```python
   audit_hmac_key: str | None = None  # Si se setea, usa HMAC-SHA256 en el audit trail
   ```
 
 ### Phase 5: config — Remover pip del allowlist default
 
-- [ ] **5.1** En `app/config.py`, cambiar `agent_shell_allowlist`:
+- [x] **5.1** En `app/config.py`, cambiar `agent_shell_allowlist`:
   ```python
   agent_shell_allowlist: str = (
       "pytest,ruff,mypy,make,npm,git,cat,head,tail,wc,ls,find,grep,echo,python,node"
@@ -202,7 +202,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
 
 ### Phase 6: Tests nuevos
 
-- [ ] **6.1** En `tests/test_shell_tools.py`, agregar clase `TestArgumentValidation`:
+- [x] **6.1** En `tests/test_shell_tools.py`, agregar clase `TestArgumentValidation`:
 
   ```python
   class TestArgumentValidation:
@@ -240,7 +240,7 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
           assert _validate_command("cat /etc/sudoers", _ALLOWLIST) == CommandDecision.DENY
   ```
 
-- [ ] **6.2** En `tests/test_security.py`, agregar tests:
+- [x] **6.2** En `tests/test_security.py`, agregar tests:
 
   ```python
   def test_policy_engine_missing_file_defaults_to_block(tmp_path):
@@ -284,12 +284,12 @@ Todos los tests de webhook, guardrails, tracing, memory, MCP, etc. son completam
 
 ### Phase 7: Verificacion final
 
-- [ ] **7.1** Correr `make test` — cero fallos esperados.
-- [ ] **7.2** Correr `make lint` — cero errores ruff.
-- [ ] **7.3** Correr `make typecheck` — cero errores mypy.
-- [ ] **7.4** Verificar manualmente que `test_allow_python` (`python -m pytest`) sigue en ALLOW.
-- [ ] **7.5** Crear `data/security_policies.yaml.example` si no existe.
-- [ ] **7.6** Actualizar `CLAUDE.md` con los nuevos patrones de seguridad.
+- [x] **7.1** Correr `make test` — cero fallos esperados.
+- [x] **7.2** Correr `make lint` — cero errores ruff.
+- [x] **7.3** Correr `make typecheck` — cero errores mypy.
+- [x] **7.4** Verificar manualmente que `test_allow_python` (`python -m pytest`) sigue en ALLOW.
+- [x] **7.5** Crear `data/security_policies.yaml.example` si no existe.
+- [x] **7.6** Actualizar `CLAUDE.md` con los nuevos patrones de seguridad.
 
 ---
 

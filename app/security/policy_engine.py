@@ -21,10 +21,12 @@ class PolicyEngine:
         try:
             if not self.policy_path.exists():
                 logger.warning(
-                    f"Security policy file not found at {self.policy_path}. Defaulting to ALLOW."
+                    f"Security policy file not found at {self.policy_path}. "
+                    "Defaulting to BLOCK (fail-secure). "
+                    "Create data/security_policies.yaml to configure rules."
                 )
                 self._policy = BasePolicy(
-                    version="1.0", default_action=PolicyAction.ALLOW, rules=[]
+                    version="1.0", default_action=PolicyAction.BLOCK, rules=[]
                 )
                 return
 

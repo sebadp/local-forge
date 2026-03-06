@@ -21,7 +21,7 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | Context Engineering v2 | [`31-context_engineering_v2_prd.md`](31-context_engineering_v2_prd.md) / [`31-context_engineering_v2_prp.md`](31-context_engineering_v2_prp.md) | ✅ Completado |
 | Prompt Engineering & Versioning | [`32-prompt_engineering_prd.md`](32-prompt_engineering_prd.md) / [`32-prompt_engineering_prp.md`](32-prompt_engineering_prp.md) | ✅ Completado |
 | Fase 9 Completion — Reaction→Curation Loop | [`33-fase9_completion_prd.md`](33-fase9_completion_prd.md) / [`33-fase9_completion_prp.md`](33-fase9_completion_prp.md) | ✅ Completado |
-| Security Hardening — Agent Shell & Tool Exposure | [`34-security-hardening_prd.md`](34-security-hardening_prd.md) / [`34-security-hardening_prp.md`](34-security-hardening_prp.md) | 📋 Pendiente |
+| Security Hardening — Agent Shell & Tool Exposure | [`34-security-hardening_prd.md`](34-security-hardening_prd.md) / [`34-security-hardening_prp.md`](34-security-hardening_prp.md) | ✅ Completado |
 
 ## Convenciones
 

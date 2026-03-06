@@ -318,7 +318,16 @@ async def test_executor_routes_to_mcp_manager():
 
     messages = [ChatMessage(role="user", content="Use MCP")]
 
-    # Bypass router: classify returns a category, select_tools returns all tools
+    # Bypass router and security layer for unit test isolation
+    from app.security.audit import AuditTrail
+    from app.security.models import PolicyAction, PolicyDecision
+    from app.security.policy_engine import PolicyEngine
+
+    allow_engine = MagicMock(spec=PolicyEngine)
+    allow_engine.evaluate.return_value = PolicyDecision(action=PolicyAction.ALLOW)
+    allow_audit = MagicMock(spec=AuditTrail)
+    allow_audit.record.return_value = MagicMock()
+
     with (
         sync_patch(
             "app.skills.executor.classify_intent", new_callable=AsyncMock, return_value=["time"]
@@ -326,6 +335,14 @@ async def test_executor_routes_to_mcp_manager():
         sync_patch(
             "app.skills.executor.select_tools",
             side_effect=lambda cats, all_tools, max_tools=8: list(all_tools.values()),
+        ),
+        sync_patch(
+            "app.skills.executor.get_policy_engine",
+            new_callable=AsyncMock,
+            return_value=allow_engine,
+        ),
+        sync_patch(
+            "app.skills.executor.get_audit_trail", new_callable=AsyncMock, return_value=allow_audit
         ),
     ):
         result = await execute_tool_loop(messages, ollama, skill_registry, mcp_manager=mcp_manager)

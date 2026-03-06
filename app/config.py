@@ -113,10 +113,11 @@ class Settings(BaseSettings):
     agent_max_iterations: int = 15  # Límite de iteraciones por sesión agéntica
     agent_session_timeout: int = 300  # Timeout en segundos (5 minutos)
     agent_shell_allowlist: str = (
-        "pytest,ruff,mypy,make,npm,pip,git,cat,head,tail,wc,ls,find,grep,echo,python,node"
+        "pytest,ruff,mypy,make,npm,git,cat,head,tail,wc,ls,find,grep,echo,python,node"
     )
     github_token: str | None = None
     github_repo: str | None = None
+    audit_hmac_key: str | None = None  # HMAC-SHA256 key for tamper-evident audit trail
     projects_root: str = ""  # Base directory for multi-project workspace (empty = single project)
 
     model_config = {"env_file": ".env"}
