@@ -120,9 +120,7 @@ async def _run_eval(
 
     # --- Print results table ---
     col_w = [8, 12, 8, 62]
-    header = (
-        f"{'entry_id':<{col_w[0]}} {'type':<{col_w[1]}} {'passed':<{col_w[2]}} input (preview)"
-    )
+    header = f"{'entry_id':<{col_w[0]}} {'type':<{col_w[1]}} {'passed':<{col_w[2]}} input (preview)"
     sep = "-" * (sum(col_w) + 3)
     print(header)
     print(sep)
