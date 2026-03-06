@@ -155,25 +155,38 @@ Si querés usar Telegram además de (o en lugar de) WhatsApp, seguí estos pasos
 
 1. Abrir Telegram y buscar `@BotFather`
 2. Enviar `/newbot` → elegir nombre (ej: "Mi LocalForge") y username (ej: `milocalforge_bot`)
-3. Copiar el token que devuelve BotFather (`bot123456:ABC-...`)
+3. Copiar el token que devuelve BotFather (formato: `123456:ABC-...`, sin el prefijo `bot`)
 
 ### 4.2 — Configurar variables en `.env`
 
+Primero generá el webhook secret en la terminal:
+
 ```bash
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=bot123456:ABC-...
-TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)
+openssl rand -hex 32
+# → pegar el resultado en TELEGRAM_WEBHOOK_SECRET
 ```
+
+Luego completar el `.env`:
+
+```env
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456:ABC-...
+TELEGRAM_WEBHOOK_SECRET=<resultado del openssl de arriba>
+```
+
+> **Nota:** el token de BotFather no incluye el prefijo `bot` — eso lo agrega la app internamente. Si copiás `bot123456:ABC-...` las llamadas a la API van a fallar.
 
 ### 4.3 — Exponer y registrar el webhook
 
-**Opción A — Automático (recomendado):** setear la URL pública en `.env` y la app la registra sola en startup:
+Recordá que Telegram y WhatsApp comparten la misma aplicación. Por lo tanto, **vas a utilizar la exacta misma URL base de ngrok** que obtuviste antes. 
+
+**Opción A — Automático (recomendado):** setear tu URL base de ngrok en `.env`. La aplicación le agregará automáticamente la ruta `/telegram/webhook` y registrará todo en Telegram al iniciar:
 
 ```bash
 TELEGRAM_WEBHOOK_URL=https://tu-dominio.ngrok-free.app
 ```
 
-**Opción B — Manual:** después de levantar la app, registrar el webhook vía curl:
+**Opción B — Manual:** después de levantar la app, registrar el webhook manualmente vía curl agregándole el path `/telegram/webhook`:
 
 ```bash
 curl -X POST "https://api.telegram.org/botTU_TOKEN/setWebhook" \
