@@ -93,7 +93,9 @@ async def test_seed_inserts_v1_for_new_prompts(repository):
 
 async def test_seed_skips_existing_prompts(repository):
     """seed_default_prompts must NOT duplicate prompts that already have an active version."""
-    await repository.save_prompt_version("existing_prompt", version=1, content="v1", created_by="human")
+    await repository.save_prompt_version(
+        "existing_prompt", version=1, content="v1", created_by="human"
+    )
     await repository.activate_prompt_version("existing_prompt", version=1)
 
     seeded = await repository.seed_default_prompts({"existing_prompt": "should not overwrite"})
@@ -145,7 +147,9 @@ async def test_list_all_active_prompts_after_seed(repository):
 async def test_get_active_prompt_uses_db_version(repository):
     """When DB has an active version, it must be returned (not the default)."""
     invalidate_prompt_cache("db_prompt_test")
-    await repository.save_prompt_version("db_prompt_test", version=1, content="DB version", created_by="human")
+    await repository.save_prompt_version(
+        "db_prompt_test", version=1, content="DB version", created_by="human"
+    )
     await repository.activate_prompt_version("db_prompt_test", version=1)
 
     result = await get_active_prompt("db_prompt_test", repository, default="fallback")
@@ -165,7 +169,9 @@ async def test_get_active_prompt_falls_back_to_registry(repository):
 async def test_get_active_prompt_explicit_default_overrides_none(repository):
     """When prompt is unknown to DB and registry, explicit default param is used."""
     invalidate_prompt_cache("unknown_prompt_xyz")
-    result = await get_active_prompt("unknown_prompt_xyz", repository, default="my explicit default")
+    result = await get_active_prompt(
+        "unknown_prompt_xyz", repository, default="my explicit default"
+    )
     assert result == "my explicit default"
     invalidate_prompt_cache("unknown_prompt_xyz")
 
@@ -181,13 +187,17 @@ async def test_get_active_prompt_raises_when_nothing_found(repository):
 async def test_get_active_prompt_uses_cache_on_second_call(repository):
     """Second call for same prompt must use cache (no DB hit needed)."""
     invalidate_prompt_cache("cached_prompt_test")
-    await repository.save_prompt_version("cached_prompt_test", version=1, content="cached", created_by="human")
+    await repository.save_prompt_version(
+        "cached_prompt_test", version=1, content="cached", created_by="human"
+    )
     await repository.activate_prompt_version("cached_prompt_test", version=1)
 
     # First call — hits DB
     first = await get_active_prompt("cached_prompt_test", repository)
     # Modify DB value — should NOT affect second call (still cached)
-    await repository.save_prompt_version("cached_prompt_test", version=2, content="updated", created_by="human")
+    await repository.save_prompt_version(
+        "cached_prompt_test", version=2, content="updated", created_by="human"
+    )
     await repository.activate_prompt_version("cached_prompt_test", version=2)
 
     second = await get_active_prompt("cached_prompt_test", repository)
@@ -216,7 +226,9 @@ async def test_classify_intent_uses_versioned_classifier(repository):
         "{recent_context}"
         "Message: {user_message}"
     )
-    await repository.save_prompt_version("classifier", version=1, content=custom_template, created_by="test")
+    await repository.save_prompt_version(
+        "classifier", version=1, content=custom_template, created_by="test"
+    )
     await repository.activate_prompt_version("classifier", version=1)
 
     client = AsyncMock()

@@ -457,7 +457,9 @@ async def cmd_approve_prompt(args: str, context: CommandContext) -> str:
                     icon = "✅" if passed else "⚠️"
                     eval_summary = f"\n{icon} *Eval score:* {score:.0%} — {details}"
                     if not passed:
-                        eval_summary += "\n_Score bajo threshold. Activando de todas formas (advisory)._"
+                        eval_summary += (
+                            "\n_Score bajo threshold. Activando de todas formas (advisory)._"
+                        )
         except Exception:
             logger.exception("activate_with_eval failed in /approve-prompt")
             eval_summary = "\n_Eval: no se pudo correr (activando de todas formas)._"

@@ -20,6 +20,7 @@ from app.memory.markdown import MemoryFile
 from app.models import ChatMessage
 from app.skills.registry import SkillRegistry
 from app.skills.tools import register_builtin_tools
+from app.telegram.router import router as telegram_router
 from app.webhook.rate_limiter import RateLimiter
 from app.webhook.router import router as webhook_router
 from app.webhook.router import wait_for_in_flight
@@ -64,6 +65,21 @@ async def lifespan(app: FastAPI):
         access_token=settings.whatsapp_access_token,
         phone_number_id=settings.whatsapp_phone_number_id,
     )
+
+    # Telegram (optional — only if telegram_enabled=true and token provided)
+    if settings.telegram_enabled and settings.telegram_bot_token:
+        from app.telegram.client import TelegramClient
+
+        tg_client = TelegramClient(http_client, settings.telegram_bot_token)
+        app.state.telegram_client = tg_client
+        if settings.telegram_webhook_url:
+            await tg_client.set_webhook(
+                settings.telegram_webhook_url + "/telegram/webhook",
+                settings.telegram_webhook_secret or None,
+            )
+        logger.info("Telegram integration enabled")
+    else:
+        app.state.telegram_client = None
     app.state.ollama_client = OllamaClient(
         http_client=http_client,
         base_url=settings.ollama_base_url,
@@ -134,7 +150,10 @@ async def lifespan(app: FastAPI):
 
     scheduler = AsyncIOScheduler()
     scheduler.start()
-    set_scheduler(scheduler, app.state.whatsapp_client)
+    _sched_clients: dict = {"whatsapp": app.state.whatsapp_client}
+    if settings.telegram_enabled and app.state.telegram_client is not None:
+        _sched_clients["telegram"] = app.state.telegram_client
+    set_scheduler(scheduler, **_sched_clients)
     set_repository(repository)
     app.state.scheduler = scheduler
 
@@ -287,3 +306,4 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="LocalForge", lifespan=lifespan)
 app.include_router(health_router)
 app.include_router(webhook_router)
+app.include_router(telegram_router)

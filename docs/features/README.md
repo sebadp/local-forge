@@ -43,6 +43,7 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Eval Stack Hardening (remediation bilingüe, LLM-as-judge, benchmark offline) | [`30-eval_hardening.md`](30-eval_hardening.md) | Eval |
 | Context Engineering v2 (token budget, XML consolidation, history windowing, capabilities filtering, memory threshold, scratchpad) | [`31-context_engineering_v2.md`](31-context_engineering_v2.md) | Context |
 | Prompt Engineering & Versioning (think=False, few-shot, prompt registry, eval-coupled versioning, /prompts command) | [`32-prompt_engineering.md`](32-prompt_engineering.md) | Eval |
+| Telegram Integration (multi-platform, PlatformClient Protocol, Adapter pattern) | [`35-telegram.md`](35-telegram.md) | Exec Plan 35 |
 
 ## Cómo crear un nuevo walkthrough
 

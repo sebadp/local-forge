@@ -108,6 +108,20 @@ class Settings(BaseSettings):
     # Prompt versioning (Exec Plan 32)
     prompt_versioning_enabled: bool = True  # Seed & track prompt versions in DB
 
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_webhook_secret: str = ""
+    allowed_telegram_chat_ids: list[str] = []
+    telegram_enabled: bool = False
+    telegram_webhook_url: str = ""  # If set, app auto-registers the webhook at startup
+
+    @field_validator("allowed_telegram_chat_ids", mode="before")
+    @classmethod
+    def parse_telegram_chat_ids(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [n.strip() for n in v.split(",") if n.strip()]
+        return v
+
     # Agent Mode
     agent_write_enabled: bool = False  # Habilita write tools (seguridad: OFF por defecto)
     agent_max_iterations: int = 15  # Límite de iteraciones por sesión agéntica

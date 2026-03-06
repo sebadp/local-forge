@@ -43,9 +43,7 @@ async def maybe_curate_to_dataset(
         # Failure takes priority — detecting problems is most valuable
         if any_system_failure or has_negative_user:
             failure_tags = (
-                [f"guardrail:{name}" for name in failed_check_names]
-                if failed_check_names
-                else None
+                [f"guardrail:{name}" for name in failed_check_names] if failed_check_names else None
             )
             await repository.add_dataset_entry(  # type: ignore[attr-defined]
                 trace_id=trace_id,

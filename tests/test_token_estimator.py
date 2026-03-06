@@ -29,7 +29,7 @@ def test_estimate_tokens_empty():
 def test_estimate_messages():
     messages = [
         ChatMessage(role="system", content="a" * 40),  # 10 tokens
-        ChatMessage(role="user", content="b" * 20),   # 5 tokens
+        ChatMessage(role="user", content="b" * 20),  # 5 tokens
         ChatMessage(role="assistant", content="c" * 80),  # 20 tokens
     ]
     assert estimate_messages_tokens(messages) == 35

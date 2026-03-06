@@ -10,7 +10,9 @@ from app.formatting.compaction import compact_tool_output
 async def test_compact_returns_as_is_when_small():
     """Text under max_length is returned unchanged without any LLM call."""
     ollama = AsyncMock()
-    result = await compact_tool_output("my_tool", "short text", "user request", ollama, max_length=1000)
+    result = await compact_tool_output(
+        "my_tool", "short text", "user request", ollama, max_length=1000
+    )
     assert result == "short text"
     ollama.chat.assert_not_called()
 
@@ -20,10 +22,14 @@ async def test_compact_json_extraction_before_llm():
     import json
 
     ollama = AsyncMock()
-    items = [{"name": f"repo{i}", "id": i, "html_url": f"https://github.com/{i}"} for i in range(50)]
+    items = [
+        {"name": f"repo{i}", "id": i, "html_url": f"https://github.com/{i}"} for i in range(50)
+    ]
     big_json = json.dumps(items)
 
-    result = await compact_tool_output("list_repos", big_json, "list my repos", ollama, max_length=200)
+    result = await compact_tool_output(
+        "list_repos", big_json, "list my repos", ollama, max_length=200
+    )
 
     # JSON extraction should have worked — LLM should NOT be called
     ollama.chat.assert_not_called()

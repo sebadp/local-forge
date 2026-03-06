@@ -2,20 +2,18 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
-from app.whatsapp.client import WhatsAppClient
-
 logger = logging.getLogger(__name__)
 
 # Global references (set via set_scheduler / set_current_user)
 _scheduler: AsyncIOScheduler | None = None
-_whatsapp_client: WhatsAppClient | None = None
+_platform_clients: dict[str, Any] = {}  # platform_name → PlatformClient
 _current_user_phone: str | None = None
 _message_received_at: datetime | None = None
 _repository = None  # set via set_repository at boot
@@ -23,11 +21,14 @@ _repository = None  # set via set_repository at boot
 DEFAULT_TIMEZONE = ZoneInfo("UTC")
 
 
-def set_scheduler(scheduler: AsyncIOScheduler, wa_client: WhatsAppClient) -> None:
-    """Initialize the global scheduler reference."""
-    global _scheduler, _whatsapp_client
+def set_scheduler(scheduler: AsyncIOScheduler, **clients: Any) -> None:
+    """Initialize the global scheduler and platform clients.
+
+    Usage: set_scheduler(scheduler, whatsapp=wa_client, telegram=tg_client)
+    """
+    global _scheduler, _platform_clients
     _scheduler = scheduler
-    _whatsapp_client = wa_client
+    _platform_clients = dict(clients)
 
 
 def set_repository(repository) -> None:  # type: ignore[no-untyped-def]
@@ -44,15 +45,21 @@ def set_current_user(phone_number: str, received_at: datetime) -> None:
 
 
 async def _send_reminder(phone_number: str, message: str) -> None:
-    """Callback function to send the reminder."""
-    if _whatsapp_client:
-        try:
-            await _whatsapp_client.send_message(phone_number, f"\u23f0 *Reminder*: {message}")
-            logger.info("Sent reminder to %s: %s", phone_number, message)
-        except Exception as e:
-            logger.error("Failed to send reminder to %s: %s", phone_number, e)
-    else:
-        logger.warning("WhatsApp client not initialized, cannot send reminder")
+    """Callback function to send a reminder to the correct platform."""
+    platform = "telegram" if phone_number.startswith("tg_") else "whatsapp"
+    client = _platform_clients.get(platform)
+    if client is None:
+        logger.warning(
+            "No platform client for '%s' (user: %s), cannot send reminder",
+            platform,
+            phone_number,
+        )
+        return
+    try:
+        await client.send_message(phone_number, f"\u23f0 Reminder: {message}")
+        logger.info("Sent reminder to %s via %s: %s", phone_number, platform, message)
+    except Exception as e:
+        logger.error("Failed to send reminder to %s: %s", phone_number, e)
 
 
 async def schedule_task(

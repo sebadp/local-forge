@@ -5,7 +5,7 @@ import base64
 import datetime
 import logging
 import re as _re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request
 from fastapi.responses import PlainTextResponse, Response
@@ -38,6 +38,8 @@ from app.formatting.whatsapp import markdown_to_whatsapp
 from app.llm.client import OllamaClient
 from app.memory.daily_log import DailyLog
 from app.models import ChatMessage, Note, WhatsAppMessage
+from app.platforms.base import PlatformClient
+from app.platforms.models import IncomingMessage, Platform
 from app.profiles.discovery import maybe_discover_profile_updates
 from app.profiles.onboarding import handle_onboarding_message
 from app.profiles.prompt_builder import build_system_prompt
@@ -58,6 +60,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _in_flight: set[asyncio.Task] = set()
+
+
+class WhatsAppPlatformAdapter:
+    """Adapts WhatsAppClient to the PlatformClient Protocol."""
+
+    def __init__(self, client: WhatsAppClient, current_message_id: str = "") -> None:
+        self._client = client
+        self._msg_id = current_message_id
+
+    async def send_message(self, to_id: str, text: str) -> str | None:
+        return await self._client.send_message(to_id, text)
+
+    async def download_media(self, media_id: str) -> bytes:
+        return await self._client.download_media(media_id)
+
+    async def mark_as_read(self, message_id: str) -> None:
+        await self._client.mark_as_read(message_id)
+
+    async def send_typing_indicator(self, to_id: str) -> None:
+        if self._msg_id:
+            await self._client.send_reaction(self._msg_id, to_id, "\u23f3")
+
+    async def remove_typing_indicator(self, to_id: str, indicator_id: str | None = None) -> None:
+        mid = indicator_id or self._msg_id
+        if mid:
+            await self._client.send_reaction(mid, to_id, "")
+
+    def format_text(self, text: str) -> str:
+        return markdown_to_whatsapp(text)
+
+    def platform_name(self) -> str:
+        return "whatsapp"
+
+
+def _wa_msg_to_incoming(msg: WhatsAppMessage) -> IncomingMessage:
+    """Convert a WhatsAppMessage to the platform-agnostic IncomingMessage."""
+    return IncomingMessage(
+        platform=Platform.WHATSAPP,
+        user_id=msg.from_number,
+        message_id=msg.message_id,
+        timestamp=msg.timestamp,
+        text=msg.text,
+        type=cast(Literal["text", "audio", "image"], msg.type),
+        media_id=msg.media_id,
+        reply_to_message_id=msg.reply_to_message_id,
+    )
 
 
 def _track_task(task: asyncio.Task) -> asyncio.Task:
@@ -180,26 +228,64 @@ async def process_message(
     vec_available: bool = False,
     trace_recorder=None,
 ) -> None:
-    # Parallelize initial WhatsApp calls (mark-read + typing indicator)
+    """WhatsApp-specific wrapper: converts to platform-agnostic types and delegates."""
+    incoming = _wa_msg_to_incoming(msg)
+    adapter = WhatsAppPlatformAdapter(wa_client, msg.message_id)
+    await process_message_generic(
+        msg=incoming,
+        platform_client=adapter,
+        settings=settings,
+        ollama_client=ollama_client,
+        conversation=conversation,
+        repository=repository,
+        command_registry=command_registry,
+        memory_file=memory_file,
+        daily_log=daily_log,
+        transcriber=transcriber,
+        skill_registry=skill_registry,
+        mcp_manager=mcp_manager,
+        vec_available=vec_available,
+        trace_recorder=trace_recorder,
+    )
+
+
+async def process_message_generic(
+    msg: IncomingMessage,
+    platform_client: PlatformClient,
+    settings: Settings,
+    ollama_client: OllamaClient,
+    conversation: ConversationManager,
+    repository,
+    command_registry,
+    memory_file,
+    daily_log: DailyLog,
+    transcriber: Transcriber,
+    skill_registry: SkillRegistry,
+    mcp_manager: McpManager | None = None,
+    vec_available: bool = False,
+    trace_recorder=None,
+) -> None:
+    """Platform-agnostic message processor. Called by both WA and Telegram routers."""
+    # Parallelize initial platform calls (mark-read + typing indicator)
     try:
         await asyncio.gather(
-            wa_client.mark_as_read(msg.message_id),
-            wa_client.send_reaction(msg.message_id, msg.from_number, "\u23f3"),
+            platform_client.mark_as_read(msg.message_id),
+            platform_client.send_typing_indicator(msg.user_id),
         )
     except Exception:
-        logger.debug("Failed to send initial WhatsApp signals")
+        logger.debug("Failed to send initial platform signals")
 
     # HITL: if the agent is waiting for user input, route the message to it
     if msg.text:
         from app.agent.hitl import resolve_hitl
 
-        if resolve_hitl(msg.from_number, msg.text):
+        if resolve_hitl(msg.user_id, msg.text):
             logger.info(
                 "HITL response from %s consumed by active agent session",
-                msg.from_number,
+                msg.user_id,
             )
             try:
-                await wa_client.send_reaction(msg.message_id, msg.from_number, "")
+                await platform_client.remove_typing_indicator(msg.user_id)
             except Exception:
                 pass
             return
@@ -208,7 +294,7 @@ async def process_message(
         await _handle_message(
             msg,
             settings,
-            wa_client,
+            platform_client,
             ollama_client,
             conversation,
             repository,
@@ -224,9 +310,9 @@ async def process_message(
     finally:
         # Remove typing indicator
         try:
-            await wa_client.send_reaction(msg.message_id, msg.from_number, "")
+            await platform_client.remove_typing_indicator(msg.user_id)
         except Exception:
-            logger.debug("Failed to remove typing reaction")
+            logger.debug("Failed to remove typing indicator")
 
 
 async def _get_query_embedding(
@@ -819,9 +905,9 @@ async def _is_repeated_question(
 
 
 async def _handle_message(
-    msg: WhatsAppMessage,
+    msg: IncomingMessage,
     settings: Settings,
-    wa_client: WhatsAppClient,
+    platform_client: PlatformClient,
     ollama_client: OllamaClient,
     conversation: ConversationManager,
     repository,
@@ -837,26 +923,26 @@ async def _handle_message(
     # Handle audio: transcribe to text
     if msg.type == "audio" and msg.media_id:
         try:
-            audio_bytes = await wa_client.download_media(msg.media_id)
+            audio_bytes = await platform_client.download_media(msg.media_id)
             transcription = await transcriber.transcribe_async(audio_bytes)
-            logger.info("Transcribed audio [%s]: %s", msg.from_number, transcription[:80])
+            logger.info("Transcribed audio [%s]: %s", msg.user_id, transcription[:80])
             msg = msg.model_copy(update={"text": transcription})
         except Exception:
             logger.exception("Audio transcription failed")
-            await wa_client.send_message(
-                msg.from_number,
+            await platform_client.send_message(
+                msg.user_id,
                 "Sorry, I couldn't process that audio. Please try again.",
             )
             return
 
     # Load user profile early (after audio transcription, so audio can feed into onboarding)
-    profile_row = await repository.get_user_profile(msg.from_number)
+    profile_row = await repository.get_user_profile(msg.user_id)
     in_onboarding = settings.onboarding_enabled and profile_row["onboarding_state"] != "complete"
 
     # Handle image: llava describes → used as onboarding answer OR qwen3 responds normally
     if msg.type == "image" and msg.media_id:
         try:
-            image_bytes = await wa_client.download_media(msg.media_id)
+            image_bytes = await platform_client.download_media(msg.media_id)
             image_b64 = base64.b64encode(image_bytes).decode()
 
             # Step 1: llava describes the image
@@ -869,7 +955,7 @@ async def _handle_message(
             ]
             description = await ollama_client.chat(vision_messages, model=settings.vision_model)
             logger.debug("Vision (LLaVA) RAW OUTPUT: %r", description)
-            logger.info("Vision description [%s]: %s", msg.from_number, description[:120])
+            logger.info("Vision description [%s]: %s", msg.user_id, description[:120])
 
             if in_onboarding:
                 # During onboarding: use image description as the user's answer to current step
@@ -880,14 +966,14 @@ async def _handle_message(
                     profile_row["data"],
                     ollama_client,
                 )
-                await repository.save_user_profile(msg.from_number, next_state, new_data)
-                await wa_client.send_message(msg.from_number, reply)
+                await repository.save_user_profile(msg.user_id, next_state, new_data)
+                await platform_client.send_message(msg.user_id, platform_client.format_text(reply))
                 return
 
             # Normal image flow: pass description to qwen3 with conversation context
             user_text = msg.text or "Describe what you see in this image"
             history_text = f"[Image] {user_text}"
-            await conversation.add_message(msg.from_number, "user", history_text, msg.message_id)
+            await conversation.add_message(msg.user_id, "user", history_text, msg.message_id)
 
             # Build context with image description injected
             query_emb = await _get_query_embedding(
@@ -905,7 +991,7 @@ async def _handle_message(
                 query_embedding=query_emb,
             )
             context = await conversation.get_context(
-                msg.from_number,
+                msg.user_id,
                 settings.system_prompt,
                 memories,
             )
@@ -918,12 +1004,12 @@ async def _handle_message(
             )
 
             reply = await ollama_client.chat(context)
-            await conversation.add_message(msg.from_number, "assistant", reply)
-            await wa_client.send_message(msg.from_number, markdown_to_whatsapp(reply))
+            await conversation.add_message(msg.user_id, "assistant", reply)
+            await platform_client.send_message(msg.user_id, platform_client.format_text(reply))
         except Exception:
             logger.exception("Image processing failed")
-            await wa_client.send_message(
-                msg.from_number,
+            await platform_client.send_message(
+                msg.user_id,
                 "Sorry, I couldn't process that image. Please try again.",
             )
         return
@@ -937,7 +1023,7 @@ async def _handle_message(
             ctx = CommandContext(
                 repository=repository,
                 memory_file=memory_file,
-                phone_number=msg.from_number,
+                phone_number=msg.user_id,
                 registry=command_registry,
                 skill_registry=skill_registry,
                 mcp_manager=mcp_manager,
@@ -948,7 +1034,7 @@ async def _handle_message(
                     if settings.semantic_search_enabled and vec_available
                     else None
                 ),
-                wa_client=wa_client,
+                wa_client=platform_client,
                 settings=settings,
                 trace_recorder=trace_recorder,
             )
@@ -960,9 +1046,9 @@ async def _handle_message(
         else:
             reply = f"Unknown command: /{cmd_name}. Type /help for available commands."
         try:
-            await wa_client.send_message(msg.from_number, reply)
+            await platform_client.send_message(msg.user_id, reply)
         except Exception:
-            logger.exception("Failed to send WhatsApp message")
+            logger.exception("Failed to send platform message")
         return
 
     # Onboarding interception: handle before normal flow
@@ -974,12 +1060,12 @@ async def _handle_message(
                 profile_row["data"],
                 ollama_client,
             )
-            await repository.save_user_profile(msg.from_number, next_state, new_data)
-            await wa_client.send_message(msg.from_number, reply)
+            await repository.save_user_profile(msg.user_id, next_state, new_data)
+            await platform_client.send_message(msg.user_id, platform_client.format_text(reply))
         except Exception:
             logger.exception("Onboarding step failed")
-            await wa_client.send_message(
-                msg.from_number,
+            await platform_client.send_message(
+                msg.user_id,
                 "Sorry, something went wrong. Please try again.",
             )
         return
@@ -1007,7 +1093,7 @@ async def _handle_message(
             user_text = f'[Replying to: "{quoted.content[:200]}"]\n{user_text}'
 
     # Get/create conversation once (populates the manager's cache)
-    conv_id = await conversation.get_conversation_id(msg.from_number)
+    conv_id = await conversation.get_conversation_id(msg.user_id)
 
     # Determine message type for tracing
     _msg_type = "audio" if msg.type == "audio" else "text"
@@ -1047,7 +1133,7 @@ async def _handle_message(
                 span.set_metadata({"phase": "context_build+save"})
                 ctx, _ = await asyncio.gather(
                     ConversationContext.build(
-                        phone_number=msg.from_number,
+                        phone_number=msg.user_id,
                         user_text=user_text,
                         repository=repository,
                         conversation_manager=conversation,
@@ -1061,7 +1147,7 @@ async def _handle_message(
         else:
             ctx, _ = await asyncio.gather(
                 ConversationContext.build(
-                    phone_number=msg.from_number,
+                    phone_number=msg.user_id,
                     user_text=user_text,
                     repository=repository,
                     conversation_manager=conversation,
@@ -1084,7 +1170,7 @@ async def _handle_message(
 
         # Implicit signal: detect if user is responding to a bot correction prompt (👎 flow)
         if user_text and settings.eval_auto_curate:
-            prev_trace_id = await repository.get_latest_trace_id(msg.from_number)
+            prev_trace_id = await repository.get_latest_trace_id(msg.user_id)
             if prev_trace_id:
                 prev_scores = await repository.get_trace_scores(prev_trace_id)
                 prompted = any(s["name"] == "correction_prompted" for s in prev_scores)
@@ -1117,7 +1203,7 @@ async def _handle_message(
         if trace_ctx and user_text:
             correction_score = _detect_correction(user_text)
             if correction_score is not None:
-                prev_trace_id = await repository.get_latest_trace_id(msg.from_number)
+                prev_trace_id = await repository.get_latest_trace_id(msg.user_id)
                 if prev_trace_id:
                     await repository.save_trace_score(
                         trace_id=prev_trace_id,
@@ -1233,7 +1319,7 @@ async def _handle_message(
 
             estimated_tokens = log_context_budget(
                 context,
-                extra={"phone": msg.from_number, "categories": pre_classified},
+                extra={"phone": msg.user_id, "categories": pre_classified},
             )
             ctx.token_estimate = estimated_tokens
         except Exception:
@@ -1246,9 +1332,9 @@ async def _handle_message(
         from app.skills.tools.project_tools import set_current_user as set_project_user
         from app.skills.tools.scheduler_tools import set_current_user
 
-        set_current_user(msg.from_number, received_at=now)
-        set_project_user(msg.from_number)
-        set_conversation_user(msg.from_number)
+        set_current_user(msg.user_id, received_at=now)
+        set_project_user(msg.user_id)
+        set_conversation_user(msg.user_id)
 
         try:
             if trace_ctx:
@@ -1402,25 +1488,25 @@ async def _handle_message(
         try:
             if trace_ctx:
                 async with trace_ctx.span("delivery") as span:
-                    wa_message_id = await wa_client.send_message(
-                        msg.from_number,
-                        markdown_to_whatsapp(reply),
+                    sent_message_id = await platform_client.send_message(
+                        msg.user_id,
+                        platform_client.format_text(reply),
                     )
-                    if wa_message_id:
-                        trace_ctx.set_wa_message_id(wa_message_id)
-                        span.set_metadata({"wa_message_id": wa_message_id})
+                    if sent_message_id:
+                        trace_ctx.set_wa_message_id(sent_message_id)
+                        span.set_metadata({"message_id": sent_message_id})
             else:
-                await wa_client.send_message(msg.from_number, markdown_to_whatsapp(reply))
+                await platform_client.send_message(msg.user_id, platform_client.format_text(reply))
         except Exception:
-            logger.exception("Failed to send WhatsApp message")
+            logger.exception("Failed to send platform message")
 
         # Increment profile message count and maybe run progressive discovery
         if settings.onboarding_enabled:
-            new_count = await repository.increment_profile_message_count(msg.from_number)
+            new_count = await repository.increment_profile_message_count(msg.user_id)
             _track_task(
                 asyncio.create_task(
                     maybe_discover_profile_updates(
-                        msg.from_number,
+                        msg.user_id,
                         new_count,
                         settings.profile_discovery_interval,
                         repository,
@@ -1467,7 +1553,7 @@ async def _handle_message(
 
     if _trace_enabled:
         async with TraceContext(
-            msg.from_number,
+            msg.user_id,
             user_text,
             recorder,
             message_type=_msg_type,

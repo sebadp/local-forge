@@ -125,7 +125,9 @@ class ConversationContext:
                 )
                 return result[0]
             except Exception:
-                logger.warning("ConversationContext: failed to compute query embedding", exc_info=True)
+                logger.warning(
+                    "ConversationContext: failed to compute query embedding", exc_info=True
+                )
                 return None
 
         async def _get_daily_logs() -> str | None:
@@ -166,7 +168,9 @@ class ConversationContext:
                     lines.append(f"  - {p.name}: {done}/{total} tasks ({pct}%)")
                 return "\n".join(lines)
             except Exception:
-                logger.warning("ConversationContext: failed to fetch projects summary", exc_info=True)
+                logger.warning(
+                    "ConversationContext: failed to fetch projects summary", exc_info=True
+                )
                 return None
 
         async def _get_memories_with_threshold(embedding: list[float] | None) -> list[str]:
@@ -195,17 +199,20 @@ class ConversationContext:
         query_embedding = await _get_query_embedding()
 
         # Step 2: parallel fetches (all independent now that embedding is ready)
-        memories_raw, windowed, sticky, logs, relevant_notes, projects_summary = (
-            await asyncio.gather(
-                _get_memories_with_threshold(query_embedding),
-                conversation_manager.get_windowed_history(
-                    phone_number, verbatim_count=verbatim_count
-                ),
-                repository.get_sticky_categories(conv_id) if conv_id else _empty_list(),
-                _get_daily_logs(),
-                _get_relevant_notes(query_embedding),
-                _get_projects_summary(),
-            )
+        (
+            memories_raw,
+            windowed,
+            sticky,
+            logs,
+            relevant_notes,
+            projects_summary,
+        ) = await asyncio.gather(
+            _get_memories_with_threshold(query_embedding),
+            conversation_manager.get_windowed_history(phone_number, verbatim_count=verbatim_count),
+            repository.get_sticky_categories(conv_id) if conv_id else _empty_list(),
+            _get_daily_logs(),
+            _get_relevant_notes(query_embedding),
+            _get_projects_summary(),
         )
 
         history, summary = windowed

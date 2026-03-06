@@ -27,9 +27,7 @@ async def test_short_history_no_windowing():
     """History shorter than verbatim_count returns all messages."""
     history = _make_messages(5)
     manager = await _make_manager(history, summary="old summary")
-    result_history, result_summary = await manager.get_windowed_history(
-        "123", verbatim_count=8
-    )
+    result_history, result_summary = await manager.get_windowed_history("123", verbatim_count=8)
     assert result_history == history
     assert result_summary is None
 
@@ -38,9 +36,7 @@ async def test_equal_history_no_windowing():
     """History exactly equal to verbatim_count returns all, no summary."""
     history = _make_messages(8)
     manager = await _make_manager(history, summary="some summary")
-    result_history, result_summary = await manager.get_windowed_history(
-        "123", verbatim_count=8
-    )
+    result_history, result_summary = await manager.get_windowed_history("123", verbatim_count=8)
     assert result_history == history
     assert result_summary is None
 
@@ -49,9 +45,7 @@ async def test_long_history_windowed():
     """History longer than verbatim_count returns last N + summary."""
     history = _make_messages(20)
     manager = await _make_manager(history, summary="This is a summary of older messages")
-    result_history, result_summary = await manager.get_windowed_history(
-        "123", verbatim_count=8
-    )
+    result_history, result_summary = await manager.get_windowed_history("123", verbatim_count=8)
     assert len(result_history) == 8
     assert result_history == history[-8:]
     assert result_summary == "This is a summary of older messages"
@@ -61,9 +55,7 @@ async def test_no_summary_available():
     """Long history but no summary in DB → returns last N, None."""
     history = _make_messages(15)
     manager = await _make_manager(history, summary=None)
-    result_history, result_summary = await manager.get_windowed_history(
-        "123", verbatim_count=8
-    )
+    result_history, result_summary = await manager.get_windowed_history("123", verbatim_count=8)
     assert len(result_history) == 8
     assert result_summary is None
 

@@ -144,7 +144,9 @@ async def test_language_remediation_creates_span_when_trace_ctx_provided():
     report = _make_language_report("fr")
     context = [ChatMessage(role="user", content="Bonjour, comment allez vous aujourd'hui?")]
 
-    await _handle_guardrail_failure(report, context, ollama_mock, "Wrong reply", trace_ctx=trace_ctx_mock)
+    await _handle_guardrail_failure(
+        report, context, ollama_mock, "Wrong reply", trace_ctx=trace_ctx_mock
+    )
 
     # span() must have been called with the correct name and kind
     trace_ctx_mock.span.assert_called_once_with("guardrails:remediation", kind="generation")
@@ -230,9 +232,11 @@ async def test_guardrails_llm_timeout_from_settings():
         patch("app.guardrails.pipeline._run_async_check", side_effect=fake_run_async_check),
         patch("app.guardrails.checks.check_hallucination") as mock_hall,
     ):
-        mock_hall.return_value = AsyncMock(return_value=GuardrailResult(
-            passed=True, check_name="hallucination_check", details="", latency_ms=0.0
-        ))()
+        mock_hall.return_value = AsyncMock(
+            return_value=GuardrailResult(
+                passed=True, check_name="hallucination_check", details="", latency_ms=0.0
+            )
+        )()
         await run_guardrails(
             user_text="some text",
             reply="some reply",

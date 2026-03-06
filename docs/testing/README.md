@@ -36,6 +36,7 @@ Cada archivo en este directorio cubre el testing manual de una feature específi
 | Eval Stack Hardening (remediation bilingüe, LLM-as-judge, benchmark offline) | [`30-eval_hardening_testing.md`](30-eval_hardening_testing.md) |
 | Context Engineering v2 (token budget, XML, windowing, capabilities filter, memory threshold, scratchpad) | [`31-context_engineering_v2_testing.md`](31-context_engineering_v2_testing.md) |
 | Prompt Engineering & Versioning (think=False, few-shot, prompt registry, eval-coupled versioning, /prompts command) | [`32-prompt_engineering_testing.md`](32-prompt_engineering_testing.md) |
+| Telegram Integration (multi-platform, PlatformClient Protocol, Adapter pattern) | [`35-telegram_testing.md`](35-telegram_testing.md) |
 
 ## Convenciones
 

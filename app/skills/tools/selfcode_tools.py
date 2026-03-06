@@ -27,6 +27,8 @@ _SENSITIVE = {
     "langfuse_secret_key",
     "langfuse_public_key",
     "audit_hmac_key",
+    "telegram_bot_token",
+    "telegram_webhook_secret",
 }
 
 _BLOCKED_NAME_PATTERNS = {".env", "secret", "token", "password", ".key", ".pem"}

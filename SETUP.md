@@ -147,7 +147,71 @@ LANGFUSE_HOST=http://localhost:3000
 
 ---
 
-## Paso 4: Levantar los servicios
+## Paso 4: Configurar Telegram (opcional)
+
+Si querés usar Telegram además de (o en lugar de) WhatsApp, seguí estos pasos. Si solo usás WhatsApp, podés saltear esta sección.
+
+### 4.1 — Crear el bot
+
+1. Abrir Telegram y buscar `@BotFather`
+2. Enviar `/newbot` → elegir nombre (ej: "Mi LocalForge") y username (ej: `milocalforge_bot`)
+3. Copiar el token que devuelve BotFather (`bot123456:ABC-...`)
+
+### 4.2 — Configurar variables en `.env`
+
+```bash
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=bot123456:ABC-...
+TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)
+```
+
+### 4.3 — Exponer y registrar el webhook
+
+**Opción A — Automático (recomendado):** setear la URL pública en `.env` y la app la registra sola en startup:
+
+```bash
+TELEGRAM_WEBHOOK_URL=https://tu-dominio.ngrok-free.app
+```
+
+**Opción B — Manual:** después de levantar la app, registrar el webhook vía curl:
+
+```bash
+curl -X POST "https://api.telegram.org/botTU_TOKEN/setWebhook" \
+  -d "url=https://tu-dominio.ngrok-free.app/telegram/webhook" \
+  -d "secret_token=TU_WEBHOOK_SECRET"
+```
+
+Respuesta esperada: `{"ok":true,"result":true,"description":"Webhook was set"}`
+
+### 4.4 — Whitelist de usuarios (recomendado)
+
+Para que solo vos puedas usar el bot, obtené tu chat ID enviando cualquier mensaje al bot y revisando los logs:
+
+```bash
+docker compose logs -f localforge | grep "tg_"
+```
+
+Vas a ver algo como `tg_123456789`. Copiá el número y agregalo al `.env`:
+
+```bash
+ALLOWED_TELEGRAM_CHAT_IDS=123456789
+```
+
+Reiniciá para aplicar: `docker compose restart localforge`
+
+### 4.5 — Verificar
+
+| Caso | Acción | Resultado esperado |
+|------|--------|--------------------|
+| Mensaje de texto | Enviar "Hola" al bot | El bot responde |
+| Nota de voz | Grabar y enviar audio | El bot transcribe y responde |
+| Comando | Enviar `/remember test` | Responde "Remembered: test" |
+| Recordatorio | "Avisame en 1 minuto" | Llega mensaje al minuto |
+| Webhook inválido | POST con secret incorrecto | HTTP 403 |
+
+---
+
+## Paso 5: Levantar los servicios
 
 ### Sin GPU (CPU only)
 
@@ -218,7 +282,7 @@ El stack incluye un servidor local de Langfuse para ver las trazas de ejecución
 
 ---
 
-## Paso 5: Configurar Webhook en Meta
+## Paso 6: Configurar Webhook en Meta
 
 1. Ir a **WhatsApp > Configuration** en tu app de Meta (https://developers.facebook.com/apps/YOUR_APP_ID/whatsapp-business/wa-settings/)
 2. En la sección **Webhook**, clickear **"Edit"**
@@ -239,7 +303,7 @@ Si todo está bien, Meta envía un GET a tu webhook, recibe el challenge de vuel
 
 ---
 
-## Paso 6: Probar end-to-end
+## Paso 7: Probar end-to-end
 
 1. Abrí WhatsApp en tu celular
 2. Mandá un mensaje al número de test de Meta (el que aparece en API Setup como "From")

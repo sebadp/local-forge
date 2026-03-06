@@ -66,9 +66,13 @@ async def test_prompts_name_shows_active_content(repository):
 
 async def test_prompts_name_shows_history(repository):
     """/prompts <name> must show version history."""
-    await repository.save_prompt_version("summarizer", version=1, content="v1 content", created_by="system")
+    await repository.save_prompt_version(
+        "summarizer", version=1, content="v1 content", created_by="system"
+    )
     await repository.activate_prompt_version("summarizer", version=1)
-    await repository.save_prompt_version("summarizer", version=2, content="v2 content", created_by="agent")
+    await repository.save_prompt_version(
+        "summarizer", version=2, content="v2 content", created_by="agent"
+    )
 
     ctx = _make_context(repository)
     result = await cmd_prompts("summarizer", ctx)
@@ -87,7 +91,9 @@ async def test_prompts_name_not_found(repository):
 async def test_prompts_name_truncates_long_content(repository):
     """/prompts <name> must truncate very long prompt content."""
     long_content = "A" * 2000
-    await repository.save_prompt_version("long_prompt", version=1, content=long_content, created_by="test")
+    await repository.save_prompt_version(
+        "long_prompt", version=1, content=long_content, created_by="test"
+    )
     await repository.activate_prompt_version("long_prompt", version=1)
 
     ctx = _make_context(repository)
@@ -103,9 +109,13 @@ async def test_prompts_name_truncates_long_content(repository):
 
 async def test_prompts_name_version_shows_content(repository):
     """/prompts <name> <version> must show that version's content."""
-    await repository.save_prompt_version("flush_to_memory", version=1, content="v1 facts", created_by="system")
+    await repository.save_prompt_version(
+        "flush_to_memory", version=1, content="v1 facts", created_by="system"
+    )
     await repository.activate_prompt_version("flush_to_memory", version=1)
-    await repository.save_prompt_version("flush_to_memory", version=2, content="v2 improved facts", created_by="agent")
+    await repository.save_prompt_version(
+        "flush_to_memory", version=2, content="v2 improved facts", created_by="agent"
+    )
 
     ctx = _make_context(repository)
     result = await cmd_prompts("flush_to_memory 2", ctx)
@@ -115,7 +125,9 @@ async def test_prompts_name_version_shows_content(repository):
 
 async def test_prompts_name_version_shows_active_marker(repository):
     """/prompts <name> <version> marks the active version."""
-    await repository.save_prompt_version("consolidator", version=1, content="merge facts", created_by="system")
+    await repository.save_prompt_version(
+        "consolidator", version=1, content="merge facts", created_by="system"
+    )
     await repository.activate_prompt_version("consolidator", version=1)
 
     ctx = _make_context(repository)
