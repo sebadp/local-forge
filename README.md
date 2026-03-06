@@ -283,6 +283,8 @@ sudo chown -R $(id -u):$(id -g) data/
 | `llama3.2:8b` | 8B | 8GB | Bueno | Chat alternativo |
 | `llama3.2:3b` | 3B | 4GB | Aceptable | Hardware limitado |
 
+Para más información acerca de cómo descargar, eliminar y configurar Ollama para el uso persistente de estos y otros modelos, puedes revisar la referencia en [docs/OLLAMA_MODELS.md](docs/OLLAMA_MODELS.md).
+
 ## Roadmap
 
 - [x] **Fase 1**: Chat funcional (webhook, Ollama, historial en memoria)
