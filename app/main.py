@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import anyio
 import httpx
 from fastapi import FastAPI
 
@@ -299,8 +300,11 @@ async def lifespan(app: FastAPI):
     trace_recorder = getattr(app.state, "trace_recorder", None)
     if trace_recorder is not None and trace_recorder.langfuse is not None:
         trace_recorder.langfuse.flush()
-    await db_conn.close()
-    await http_client.aclose()
+    # Shield DB and HTTP close from any active anyio cancellation so
+    # "address already in use" restarts don't leave connections dangling.
+    with anyio.CancelScope(shield=True):
+        await db_conn.close()
+        await http_client.aclose()
 
 
 app = FastAPI(title="LocalForge", lifespan=lifespan)

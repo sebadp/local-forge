@@ -89,7 +89,7 @@ async def telegram_webhook(
             continue
 
         # Dedup
-        if not await repository.try_claim_message(msg.message_id):
+        if await repository.try_claim_message(msg.message_id):
             logger.info("Duplicate Telegram message ignored: %s", msg.message_id)
             continue
 

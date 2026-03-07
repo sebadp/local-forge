@@ -97,12 +97,18 @@ app/
 ├── config.py                # Pydantic Settings (.env)
 ├── models.py                # Modelos de datos (ChatMessage, Memory, Note, etc.)
 ├── dependencies.py          # FastAPI dependency injection
-│   └── splitter.py          # Split de mensajes largos
+├── formatting/
+│   ├── markdown_to_wa.py    # Markdown → WhatsApp wikitext
+│   ├── telegram_md.py       # Markdown → Telegram HTML
+│   ├── splitter.py          # Split de mensajes largos (>4096 chars)
+│   └── compaction.py        # JSON-aware compaction (3 niveles)
 ├── platforms/
 │   ├── base.py              # PlatformClient Protocol (interfaz común)
 │   └── models.py            # IncomingMessage + Platform StrEnum
 ├── telegram/
-│   └── client.py            # TelegramClient (implementa PlatformClient)
+│   ├── client.py            # TelegramClient (implementa PlatformClient)
+│   ├── parser.py            # Telegram Update → IncomingMessage
+│   └── router.py            # POST /telegram/webhook + validación
 ├── memory/
 │   ├── markdown.py          # Sync SQLite <-> MEMORY.md (bidireccional)
 │   ├── watcher.py           # File watcher (watchdog) para edición manual de MEMORY.md

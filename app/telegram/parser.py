@@ -21,7 +21,7 @@ def extract_telegram_messages(payload: dict) -> list[IncomingMessage]:
         return []
 
     user_id = f"tg_{from_info['id']}"
-    message_id = str(msg["message_id"])
+    message_id = f"tg_{from_info['id']}_{msg['message_id']}"
     timestamp = str(msg["date"])
     reply_to: str | None = None
     if "reply_to_message" in msg:

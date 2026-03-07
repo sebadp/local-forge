@@ -66,7 +66,7 @@ def test_extract_text_with_reply():
     update = _make_text_update(text="Thanks", reply_to_id=50)
     msgs = extract_telegram_messages(update)
     assert len(msgs) == 1
-    assert msgs[0].reply_to_message_id == "50"
+    assert msgs[0].reply_to_message_id == "50"  # reply_to stays raw (not used for dedup)
 
 
 def test_extract_voice_message():
@@ -130,10 +130,10 @@ def test_extract_no_message_returns_empty():
     assert extract_telegram_messages({}) == []
 
 
-def test_message_id_is_string():
+def test_message_id_is_namespaced():
     update = _make_text_update(message_id=42)
     msgs = extract_telegram_messages(update)
-    assert msgs[0].message_id == "42"
+    assert msgs[0].message_id == "tg_12345678_42"
 
 
 def test_timestamp_is_string():

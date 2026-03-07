@@ -163,27 +163,42 @@ Primero generá el webhook secret en la terminal:
 
 ```bash
 openssl rand -hex 32
-# → pegar el resultado en TELEGRAM_WEBHOOK_SECRET
 ```
 
-Luego completar el `.env`:
+Copiá el resultado y completá el `.env`:
 
 ```env
 TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=123456:ABC-...
-TELEGRAM_WEBHOOK_SECRET=<resultado del openssl de arriba>
+TELEGRAM_WEBHOOK_SECRET=a1b2c3d4e5f6...
+TELEGRAM_WEBHOOK_URL=https://tu-dominio.ngrok-free.app
 ```
 
-> **Nota:** el token de BotFather no incluye el prefijo `bot` — eso lo agrega la app internamente. Si copiás `bot123456:ABC-...` las llamadas a la API van a fallar.
+> **Errores comunes:**
+> - **`TELEGRAM_ENABLED`**: verificá que diga `true`, no `false`. Si queda en `false` (el default), la app arranca sin Telegram y no verás ningún error.
+> - **`TELEGRAM_BOT_TOKEN`**: copiar solo el token (ej: `123456:ABC-...`), **sin** el prefijo `bot`. La app agrega `bot` internamente en la URL de la API. Si copiás `bot123456:ABC-...` las llamadas fallan con 401.
+> - **`TELEGRAM_WEBHOOK_SECRET`**: pegar el resultado del `openssl` directamente. **No** usar `$(openssl rand -hex 32)` en el `.env` — los archivos `.env` no ejecutan comandos shell.
+> - **`TELEGRAM_WEBHOOK_URL`**: debe incluir `https://` al principio. Es la misma URL base de ngrok (tu `NGROK_DOMAIN` con `https://` adelante). Si ponés solo el dominio sin protocolo, el registro del webhook falla silenciosamente.
 
 ### 4.3 — Exponer y registrar el webhook
 
-Recordá que Telegram y WhatsApp comparten la misma aplicación. Por lo tanto, **vas a utilizar la exacta misma URL base de ngrok** que obtuviste antes. 
+Telegram y WhatsApp comparten la misma aplicación y el mismo túnel ngrok. La URL base es la misma — lo que cambia es el path (`/webhook` para WhatsApp, `/telegram/webhook` para Telegram).
 
-**Opción A — Automático (recomendado):** setear tu URL base de ngrok en `.env`. La aplicación le agregará automáticamente la ruta `/telegram/webhook` y registrará todo en Telegram al iniciar:
+**Opción A — Automático (recomendado):** si configuraste `TELEGRAM_WEBHOOK_URL` en el paso anterior, la app registra el webhook automáticamente al iniciar. Verificá que los logs muestren:
+
+```
+Telegram webhook registered: https://tu-dominio.ngrok-free.app/telegram/webhook
+Telegram integration enabled
+```
+
+Si no aparecen estos logs, revisá que `TELEGRAM_ENABLED=true` y que `TELEGRAM_BOT_TOKEN` tenga valor.
+
+**Opción B — Manual:** si preferís no usar `TELEGRAM_WEBHOOK_URL`, podés registrar el webhook manualmente después de levantar la app:
 
 ```bash
-TELEGRAM_WEBHOOK_URL=https://tu-dominio.ngrok-free.app
+curl -X POST "https://api.telegram.org/botTU_TOKEN/setWebhook" \
+  -d "url=https://tu-dominio.ngrok-free.app/telegram/webhook" \
+  -d "secret_token=TU_WEBHOOK_SECRET"
 ```
 
 **Opción B — Manual:** después de levantar la app, registrar el webhook manualmente vía curl agregándole el path `/telegram/webhook`:

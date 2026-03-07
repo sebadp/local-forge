@@ -52,7 +52,7 @@ class PlatformClient(Protocol):
 | `send_message` | Enviar texto al usuario. Puede splitear mensajes largos internamente. Retorna message_id o None. | Obligatorio |
 | `download_media` | Descargar bytes de un media por su ID nativo. Retorna los bytes raw. | Obligatorio (puede raise NotImplementedError si no aplica) |
 | `mark_as_read` | Marcar un mensaje como leído. | No-op si la plataforma no lo soporta |
-| `send_typing_indicator` | Mostrar indicador de "escribiendo...". Retorna un indicator_id opcional para luego removerlo. | No-op si no aplica |
+| `send_typing_indicator` | Mostrar indicador de "escribiendo...". Retorna `None`. | No-op si no aplica |
 | `remove_typing_indicator` | Remover el indicador de escritura. En Telegram es no-op (el typing auto-expira en ~5s). | No-op si no aplica |
 | `format_text` | Convertir Markdown del LLM al formato nativo de la plataforma. | Obligatorio |
 | `platform_name` | String identifier de la plataforma ("whatsapp", "telegram", ...). | Obligatorio |

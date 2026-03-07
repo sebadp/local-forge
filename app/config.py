@@ -1,5 +1,46 @@
+from typing import Any
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, EnvSettingsSource
+from pydantic_settings.sources.providers.dotenv import DotEnvSettingsSource
+
+
+def _strip_inline_comment(value: Any) -> Any:
+    """Strip trailing inline shell comments from unquoted env var values.
+
+    e.g. 'FIELD=             # explanation' → value becomes '' after strip.
+    Only affects string values; non-strings pass through unchanged.
+    """
+    if isinstance(value, str) and "#" in value:
+        value = value[: value.index("#")].strip()
+    return value
+
+
+def _safe_decode_complex(value: Any) -> Any:
+    """Strip inline comments, then attempt JSON decoding.
+
+    Falls back to returning the raw string when JSON parsing fails, so that
+    field_validators (e.g. comma-split for list[str] fields) can handle it.
+    """
+    import json as _json
+
+    value = _strip_inline_comment(value)
+    if not isinstance(value, str) or value == "":
+        return None  # env_ignore_empty / field default takes over
+    try:
+        return _json.loads(value)
+    except ValueError:
+        return value  # let field_validator handle comma-separated strings
+
+
+class _SafeEnvSource(EnvSettingsSource):
+    def decode_complex_value(self, field_name: str, field: Any, value: Any) -> Any:
+        return _safe_decode_complex(value)
+
+
+class _SafeDotEnvSource(DotEnvSettingsSource):
+    def decode_complex_value(self, field_name: str, field: Any, value: Any) -> Any:
+        return _safe_decode_complex(value)
 
 
 class Settings(BaseSettings):
@@ -134,4 +175,17 @@ class Settings(BaseSettings):
     audit_hmac_key: str | None = None  # HMAC-SHA256 key for tamper-evident audit trail
     projects_root: str = ""  # Base directory for multi-project workspace (empty = single project)
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "env_ignore_empty": True}
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):  # type: ignore[override]
+        # Replace default sources with comment-stripping wrappers so that
+        # inline comments in .env files (e.g. "FIELD=  # explanation") don't
+        # crash JSON decoding for list/dict fields.
+        safe_env = _SafeEnvSource(settings_cls)
+        safe_dotenv = _SafeDotEnvSource(
+            settings_cls, env_file=settings_cls.model_config.get("env_file")
+        )
+        return (init_settings, safe_env, safe_dotenv, file_secret_settings)
