@@ -38,12 +38,23 @@ cambios más invasivos en el executor.
 - Persistir stats en metadata del span Phase B para que sea consultable
 - Agregar `get_search_stats(days)` en `repository.py` + tool en `eval_tools.py`
 
+**Gap 5 — Dashboard HTML offline:**
+- Script `scripts/dashboard.py` que genera un HTML autocontenido con tablas + gráficos
+- Sin FastAPI, sin deps extra — solo SQLite + stdlib + Chart.js desde CDN
+- Secciones: summary cards, guardrail pass rates, failure trend, dataset composition, latencias p95, recent failures con links a Langfuse
+
+**Gap 6 — Langfuse infrautilizado:**
+- `session_id` no se envía → Langfuse no puede agrupar conversaciones por usuario
+- Tags solo llevan status (`completed`/`failed`) → sin categorías de intento (`math`, `time`, etc.)
+- El eval dataset local (golden/failure/correction) no está sincronizado con Langfuse Datasets
+- Platform (`whatsapp`/`telegram`) no está en metadata de la traza
+
 ### Out of Scope
 
 - Tool usage metrics (qué tools se llaman más, tasas de error por tool) — gap 4
 - A/B testing de configuraciones de context (requiere routing)
 - Alertas automáticas cuando métricas superan umbrales
-- Dashboard visual (fuera del scope de WhatsApp/terminal)
+- Langfuse Prompt Management sync (el sistema local de versioning ya cubre esto)
 
 ---
 
@@ -90,6 +101,47 @@ Latencias p50/p95/p99 (últimos 7 días):
 ```
 El cuello de botella es `execute_tool_loop` — problema en el LLM o en las tools, no en el embed.
 
+### 3.4 Dashboard offline para revisión semanal
+
+**Antes:** Para revisar métricas hay que abrir WhatsApp y pedir al bot que ejecute tools una
+por una. No hay vista consolidada de todo el sistema.
+
+**Después:**
+```bash
+python scripts/dashboard.py --days 30 --output reports/week.html
+# → Abre reports/week.html en el browser
+```
+El HTML muestra: 143 trazas, 91.5% pass rate, 12 fallos, latencia p95 4.8s en tool loop,
+dataset con 23 goldens / 12 failures / 8 corrections, tendencia diaria de los últimos 30 días.
+Cada trace_id es un link clickable a `{langfuse_host}/trace/{trace_id}`.
+
+### 3.5 Agrupación por usuario en Langfuse
+
+**Antes:** En Langfuse, "Sessions" está vacío. Todas las trazas aparecen desconectadas aunque
+provengan del mismo usuario. No se puede ver la conversación completa de un usuario en la UI.
+
+**Después:** Cada traza lleva `session_id=phone_number`. En Langfuse → Sessions, se puede
+filtrar por número de teléfono y ver el histórico completo de interacciones como una timeline.
+
+### 3.6 Filtrar trazas por intent en Langfuse
+
+**Antes:** En Langfuse solo se puede filtrar por status (completed/failed). Si querés ver
+todas las interacciones matemáticas para verificar que la calculadora funciona, no hay filtro.
+
+**Después:** Cada traza lleva tags `["completed", "math", "calculator"]` (status + categorías
+resueltas). En Langfuse → Traces → Filter by Tag: `math` muestra solo las interacciones
+de cálculo. Tags de platform: `whatsapp` o `telegram`.
+
+### 3.7 Eval dataset visible en Langfuse
+
+**Antes:** El dataset de correcciones/goldens existe en SQLite pero es invisible en Langfuse.
+No se puede usar el playground de Langfuse para revisar o anotar manualmente los entries.
+
+**Después:** Cuando `maybe_curate_to_dataset()` guarda un entry de tipo `correction` o `golden`,
+también lo pushea a `langfuse.create_dataset_item(dataset_name="localforge-eval", ...)`.
+El dataset aparece en Langfuse → Datasets para revisión manual y futura integración con
+Langfuse Evals.
+
 ### 3.3 Calibrar memory_similarity_threshold
 
 **Antes:** `memory_similarity_threshold=1.0` está en config pero nadie sabe si está generando
@@ -118,6 +170,9 @@ Un fallback_threshold de 22% indica que el threshold está demasiado estricto pa
   (columna ya existe en `trace_spans`). No se agrega ninguna tabla nueva.
 - **Fail-open en `get_latency_percentiles`**: si `trace_spans` está vacía o `tracing_enabled=False`,
   las tools deben retornar un mensaje descriptivo en lugar de error.
+- **Dashboard usa Chart.js desde CDN**: única dependencia externa, solo para renderizado en browser. El script en sí no la importa en Python — va embebida en el HTML como `<script src="https://cdn.jsdelivr.net/npm/chart.js">`.
+- **Langfuse `update_trace_tags` es un upsert**: llamar `langfuse.trace(id=existing_id, tags=[...])` actualiza la traza existente, no crea una nueva. Safe llamarlo mid-flight.
+- **Dataset sync solo para correction y golden**: los `failure` entries no se sincronizan a Langfuse Datasets (son demasiado ruidosos sin curación). Solo entries con `expected_output` o `confirmed=True`.
 - **`get_latency_percentiles` usa Python para percentiles**: SQLite no tiene `PERCENTILE_DISC`.
   Se hace `SELECT latency_ms ORDER BY latency_ms` y se indexa por posición en Python. El volumen
   de filas (máx. 90 días × N msgs/día) es manejable en memoria.

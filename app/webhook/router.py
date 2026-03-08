@@ -1168,6 +1168,13 @@ async def _handle_message(
         summary = ctx.summary
         projects_summary = ctx.projects_summary
 
+        # Log search stats for observability (best-effort)
+        if ctx.search_stats:
+            logger.info(
+                "context.search_stats",
+                extra={"search_stats": ctx.search_stats, "phone": msg.user_id},
+            )
+
         # Implicit signal: detect if user is responding to a bot correction prompt (👎 flow)
         if user_text and settings.eval_auto_curate:
             prev_trace_id = await repository.get_latest_trace_id(msg.user_id)
@@ -1262,6 +1269,17 @@ async def _handle_message(
             except Exception:
                 logger.warning("classify_intent task failed, executor will retry", exc_info=True)
 
+        # Update Langfuse trace tags with intent categories (best-effort, upsert)
+        if trace_ctx and recorder and pre_classified and pre_classified != ["none"]:
+            try:
+                _platform_tag = "telegram" if msg.user_id.startswith("tg_") else "whatsapp"
+                await recorder.update_trace_tags(
+                    trace_ctx.trace_id,
+                    [_platform_tag] + pre_classified,
+                )
+            except Exception:
+                logger.debug("update_trace_tags failed", exc_info=True)
+
         # Capabilities summary (sync, fast) — built AFTER classify so we can filter by category.
         # Skip entirely when classify returned "none" (plain chat, no tools needed).
         if not has_tools or pre_classified == ["none"]:
@@ -1315,13 +1333,23 @@ async def _handle_message(
 
         # Token budget tracking (logging only, fail-open)
         try:
-            from app.context.token_estimator import log_context_budget
+            from app.context.token_estimator import (
+                estimate_sections,
+                log_context_budget,
+                log_context_budget_breakdown,
+            )
 
             estimated_tokens = log_context_budget(
                 context,
                 extra={"phone": msg.user_id, "categories": pre_classified},
             )
             ctx.token_estimate = estimated_tokens
+
+            # Breakdown: system_prompt (first message) vs history (rest)
+            system_text = context[0].content if context else ""
+            history_text = " ".join(m.content or "" for m in context[1:])
+            sections = estimate_sections({"system_prompt": system_text, "history": history_text})
+            log_context_budget_breakdown(sections)
         except Exception:
             logger.debug("Token budget estimation failed", exc_info=True)
 
@@ -1541,6 +1569,7 @@ async def _handle_message(
                         output_text=reply,
                         repository=repository,
                         failed_check_names=failed_checks_for_curation or None,
+                        trace_recorder=recorder,
                     )
                 )
             )
@@ -1567,11 +1596,13 @@ async def _handle_message(
         )
 
     if _trace_enabled:
+        _platform_tag = "telegram" if msg.user_id.startswith("tg_") else "whatsapp"
         async with TraceContext(
             msg.user_id,
             user_text,
             recorder,
             message_type=_msg_type,
+            platform=_platform_tag,
         ) as trace_ctx:
             await _run_normal_flow(trace_ctx)
     else:

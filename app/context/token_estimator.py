@@ -27,6 +27,37 @@ def estimate_messages_tokens(messages: list[ChatMessage]) -> int:
     return sum(estimate_tokens(m.content or "") for m in messages)
 
 
+def estimate_sections(sections: dict[str, str | None]) -> dict[str, int]:
+    """Compute token estimate per named section. None/empty sections count as 0."""
+    return {name: estimate_tokens(text) if text else 0 for name, text in sections.items()}
+
+
+def log_context_budget_breakdown(
+    sections: dict[str, int],
+    context_limit: int = _CONTEXT_LIMIT,
+) -> None:
+    """Log a structured token breakdown per context section.
+
+    Emits a single INFO log with the breakdown dict, largest section, and total.
+    Does NOT emit WARNING/ERROR — that is handled by log_context_budget().
+    Best-effort: callers should wrap in try/except.
+    """
+    total = sum(sections.values())
+    if not sections:
+        return
+    largest_section = max(sections, key=lambda k: sections[k])
+    logger.info(
+        "context.budget.breakdown: total=%d largest=%s",
+        total,
+        largest_section,
+        extra={
+            "token_breakdown": sections,
+            "largest_section": largest_section,
+            "total": total,
+        },
+    )
+
+
 def log_context_budget(
     messages: list[ChatMessage],
     context_limit: int = _CONTEXT_LIMIT,

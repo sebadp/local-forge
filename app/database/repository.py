@@ -9,6 +9,25 @@ import aiosqlite
 from app.models import ChatMessage, Memory, Note, Project, ProjectNote, ProjectTask
 
 
+def _compute_percentiles(name: str, sorted_values: list[float]) -> dict:
+    """Compute p50/p95/p99 from a pre-sorted list of latency values."""
+
+    def _pct(values: list[float], p: float) -> float:
+        if not values:
+            return 0.0
+        idx = max(0, int(len(values) * p / 100) - 1)
+        return round(values[idx], 1)
+
+    return {
+        "span": name,
+        "n": len(sorted_values),
+        "p50": _pct(sorted_values, 50),
+        "p95": _pct(sorted_values, 95),
+        "p99": _pct(sorted_values, 99),
+        "max": round(sorted_values[-1], 1) if sorted_values else 0.0,
+    }
+
+
 class Repository:
     def __init__(self, conn: aiosqlite.Connection):
         self._conn = conn
@@ -1508,4 +1527,91 @@ class Repository:
         return [
             {"role": r[0], "content": r[1], "timestamp": r[2]}
             for r in reversed(rows)  # chronological order
+        ]
+
+    # --- Metrics Hardening (Plan 38) ---
+
+    async def get_latency_percentiles(
+        self, span_name: str | None = None, days: int = 7
+    ) -> list[dict]:
+        """Return p50/p95/p99 latency per span name for the last N days.
+
+        If span_name is None, returns stats for the most frequent span names (top 10).
+        Percentiles computed in Python (SQLite has no PERCENTILE_DISC).
+        """
+        if span_name:
+            cursor = await self._conn.execute(
+                """
+                SELECT name, latency_ms FROM trace_spans
+                WHERE name = ? AND latency_ms IS NOT NULL
+                  AND started_at >= datetime('now', ? || ' days')
+                ORDER BY latency_ms ASC
+                """,
+                (span_name, f"-{days}"),
+            )
+            rows = await cursor.fetchall()
+            if not rows:
+                return []
+            return [_compute_percentiles(span_name, [r[1] for r in rows])]
+        else:
+            # Top frequent span names
+            cursor = await self._conn.execute(
+                """
+                SELECT name, COUNT(*) AS n FROM trace_spans
+                WHERE latency_ms IS NOT NULL
+                  AND started_at >= datetime('now', ? || ' days')
+                GROUP BY name
+                ORDER BY n DESC
+                LIMIT 10
+                """,
+                (f"-{days}",),
+            )
+            name_rows = await cursor.fetchall()
+            results = []
+            for sname, _ in name_rows:
+                cursor2 = await self._conn.execute(
+                    """
+                    SELECT latency_ms FROM trace_spans
+                    WHERE name = ? AND latency_ms IS NOT NULL
+                      AND started_at >= datetime('now', ? || ' days')
+                    ORDER BY latency_ms ASC
+                    """,
+                    (sname, f"-{days}"),
+                )
+                lat_rows = await cursor2.fetchall()
+                results.append(_compute_percentiles(sname, [r[0] for r in lat_rows]))
+            return results
+
+    async def get_search_hit_rate(self, days: int = 7) -> list[dict]:
+        """Return distribution of semantic search modes from span metadata.
+
+        Requires that search_stats were stored in trace_spans.metadata_json under span
+        name 'phase_b'. Returns empty list if no data is available.
+        """
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                json_extract(metadata_json, '$.search_mode') AS mode,
+                COUNT(*) AS n,
+                AVG(json_extract(metadata_json, '$.memories_retrieved')) AS avg_retrieved,
+                AVG(json_extract(metadata_json, '$.memories_passed')) AS avg_passed
+            FROM trace_spans
+            WHERE name = 'phase_b'
+              AND started_at >= datetime('now', ? || ' days')
+              AND metadata_json IS NOT NULL
+              AND json_extract(metadata_json, '$.search_mode') IS NOT NULL
+            GROUP BY mode
+            ORDER BY n DESC
+            """,
+            (f"-{days}",),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "mode": r[0],
+                "n": r[1],
+                "avg_retrieved": round(r[2], 1) if r[2] is not None else 0.0,
+                "avg_passed": round(r[3], 1) if r[3] is not None else 0.0,
+            }
+            for r in rows
         ]

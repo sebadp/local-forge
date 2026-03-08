@@ -52,3 +52,6 @@ htmlcov/
 
 # Scripts personales
 fix_nvidia.sh
+
+# Generated reports
+reports/

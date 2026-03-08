@@ -60,6 +60,7 @@ class TraceRecorder:
         phone_number: str,
         input_text: str,
         message_type: str = "text",
+        platform: str = "whatsapp",
     ) -> None:
         try:
             await self._repo.save_trace(trace_id, phone_number, input_text, message_type)
@@ -68,8 +69,9 @@ class TraceRecorder:
                     id=trace_id,
                     name="interaction",
                     user_id=phone_number,
+                    session_id=phone_number,  # groups conversations by user in Langfuse Sessions
                     input=input_text,
-                    metadata={"message_type": message_type},
+                    metadata={"message_type": message_type, "platform": platform},
                 )
         except Exception:
             logger.warning("TraceRecorder.start_trace failed", exc_info=True)
@@ -199,6 +201,35 @@ class TraceRecorder:
                 )
         except Exception:
             logger.warning("TraceRecorder.add_score failed", exc_info=True)
+
+    async def update_trace_tags(self, trace_id: str, tags: list[str]) -> None:
+        """Upsert tags on an existing Langfuse trace. Best-effort, no-op if no Langfuse."""
+        if not self.langfuse or not tags:
+            return
+        try:
+            self.langfuse.trace(id=trace_id, tags=tags)
+        except Exception:
+            logger.warning("TraceRecorder.update_trace_tags failed", exc_info=True)
+
+    async def sync_dataset_to_langfuse(
+        self,
+        dataset_name: str,
+        input_text: str,
+        expected_output: str | None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Push a dataset entry to Langfuse Datasets. Best-effort, no-op if no Langfuse."""
+        if not self.langfuse:
+            return
+        try:
+            self.langfuse.create_dataset_item(
+                dataset_name=dataset_name,
+                input={"text": input_text},
+                expected_output={"text": expected_output} if expected_output else None,
+                metadata=metadata or {},
+            )
+        except Exception:
+            logger.warning("TraceRecorder.sync_dataset_to_langfuse failed", exc_info=True)
 
     async def set_trace_output(self, trace_id: str, output_text: str) -> None:
         # Output is set when finishing the trace; this is a no-op that can be

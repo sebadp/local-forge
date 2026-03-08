@@ -2,7 +2,7 @@
 
 > **Versión**: v1.0
 > **Fecha**: 2026-03-06
-> **Estado**: Implementado (con gaps documentados)
+> **Estado**: Implementado — gaps 1-3, 5-6 resueltos en Plan 38; gap 4 descartado (baja prioridad)
 
 ---
 
@@ -344,32 +344,39 @@ es inaceptable.
 
 Estas son las métricas identificadas pero aún no implementadas, en orden de impacto:
 
-### 1. Token budget por sección (alta prioridad)
-Hoy se loguea el total de tokens. No se sabe cuánto aporta cada sección (memorias, historial,
-daily logs, notas, proyectos). Cuando el contexto está al 90%, no hay información para decidir
-qué recortar. La solución es loguear el breakdown en `_build_context()`:
-```python
-logger.info("context.budget.breakdown", extra={
-    "memories_tokens": estimate_tokens(memories_text),
-    "history_tokens": estimate_tokens(history_text),
-    "daily_logs_tokens": estimate_tokens(daily_logs_text),
-    ...
-})
-```
+### 1. Token budget por sección ✅ Resuelto (Plan 38)
+Implementado en `app/context/token_estimator.py` — `estimate_sections()` y
+`log_context_budget_breakdown()`. Llamado en `_run_normal_flow()` después de `_build_context()`.
+El log `context.budget.breakdown` incluye `system_prompt` vs `history` con el campo
+`largest_section` para diagnóstico rápido.
 
-### 2. Latencia p50/p95 por operación (media prioridad)
-Los spans almacenan `latency_ms` pero no hay agregación. Un tool `get_latency_stats` que
-calcule p50/p95/p99 por span name (`classify_intent`, `embed`, `execute_tool_loop`) permitiría
-identificar el cuello de botella real en producción.
+### 2. Latencia p50/p95 por operación ✅ Resuelto (Plan 38)
+Implementado en `app/database/repository.py` — `get_latency_percentiles(span_name, days)` y
+`_compute_percentiles()`. Expuesto via tool `get_latency_stats` en `eval_tools.py`.
+Responde desde WhatsApp: "dame las latencias del pipeline de los últimos 7 días".
 
-### 3. Semantic search hit rate (media prioridad)
-¿Con qué frecuencia la búsqueda semántica devuelve memorias que pasan el threshold de distancia
-vs cae al fallback (`get_active_memories`)? Si el hit rate es bajo, `memory_similarity_threshold`
-está mal calibrado. Esta métrica no existe hoy.
+### 3. Semantic search hit rate ✅ Resuelto (Plan 38)
+`ConversationContext._get_memories_with_threshold()` ahora retorna `(memories, search_stats)`.
+El campo `search_stats` trackea `search_mode` (semantic/fallback_threshold/full_fallback),
+`memories_retrieved`, `memories_passed`, `memories_returned`. Loguea en `context.search_stats`.
+Tool `get_search_stats` en `eval_tools.py` consulta la distribución de modos.
 
 ### 4. Tool usage metrics (baja prioridad)
 Qué tools se invocan más, cuáles tienen mayor tasa de error, cuáles nunca se usan.
 Útil para detectar tools redundantes y para calibrar el router de intención.
+**Descartado de Plan 38** — requiere cambios más invasivos en el executor.
+
+### 5. Dashboard HTML offline ✅ Implementado (Plan 38)
+`scripts/dashboard.py` — genera HTML autocontenido con Chart.js desde CDN.
+Secciones: summary cards, guardrail pass rates, failure trend (Chart.js), latencias p50/p95/p99,
+dataset composition, recent failures con links a Langfuse.
+Uso: `python scripts/dashboard.py --db data/localforge.db --output reports/dashboard.html`
+
+### 6. Langfuse infrautilizado ✅ Resuelto (Plan 38)
+- `session_id=phone_number` en cada traza → agrupa conversaciones en Langfuse Sessions
+- `platform` tag en metadata → filtra WhatsApp vs Telegram
+- `update_trace_tags()` → tags de categorías de intent (`math`, `time`, etc.) en cada traza
+- `sync_dataset_to_langfuse()` → golden/correction entries se sincronizan a Langfuse Datasets
 
 ---
 
