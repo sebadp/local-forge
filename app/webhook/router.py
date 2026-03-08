@@ -1144,6 +1144,11 @@ async def _handle_message(
                     ),
                     repository.save_message(conv_id, "user", user_text, msg.message_id),
                 )
+                # Persist phase timing + search stats in span metadata for baseline measurement
+                if ctx.build_timing:
+                    span.set_metadata(ctx.build_timing)
+                if ctx.search_stats:
+                    span.set_metadata(ctx.search_stats)
         else:
             ctx, _ = await asyncio.gather(
                 ConversationContext.build(
@@ -1255,9 +1260,21 @@ async def _handle_message(
 
         if classify_task is not None:
             try:
-                # If the base classify_task returned 'none', upgrade with context + sticky fallback
                 base_result = await classify_task
+                needs_context_upgrade = False
+
                 if base_result == ["none"] and (history or sticky_categories):
+                    # Stage 1 returned "none" — re-classify with context
+                    needs_context_upgrade = True
+                elif sticky_categories and base_result != ["none"]:
+                    # Stage 1 classified confidently, but sticky categories exist —
+                    # check if sticky categories overlap; if not, re-classify with
+                    # context to avoid losing continuity (e.g. user says "busca en el
+                    # contenido" while still working on a GitHub repo review).
+                    if not set(sticky_categories) & set(base_result):
+                        needs_context_upgrade = True
+
+                if needs_context_upgrade:
                     pre_classified = await classify_intent(
                         user_text,
                         ollama_client,

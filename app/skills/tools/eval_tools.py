@@ -278,21 +278,33 @@ def register(
         return "\n".join(lines)
 
     async def get_latency_stats(span_name: str = "all", days: int = 7) -> str:
-        """Return p50/p95/p99 latency stats per pipeline span for the last N days."""
+        """Return p50/p95/p99 latency stats per pipeline span for the last N days.
+
+        When span_name='all', also includes end-to-end latency from the traces table.
+        The phase_ab span metadata includes embed_ms and searches_ms for Phase A/B breakdown.
+        """
         try:
             target = None if span_name == "all" else span_name
             stats = await repository.get_latency_percentiles(target, days=days)
+            e2e = await repository.get_e2e_latency_percentiles(days=days) if span_name == "all" else []
         except Exception:
             logger.exception("get_latency_stats failed")
             return "Error retrieving latency stats."
 
-        if not stats:
+        if not stats and not e2e:
             return (
                 f"No latency data found for span='{span_name}' in the last {days} days. "
                 "Make sure tracing_enabled=True and some interactions have been processed."
             )
 
         lines = [f"*Latencias p50/p95/p99 — últimos {days} días*", ""]
+        for s in e2e:
+            lines.append(
+                f"- `{s['span']}`: p50={s['p50']:.0f}ms  p95={s['p95']:.0f}ms  "
+                f"p99={s['p99']:.0f}ms  max={s['max']:.0f}ms  (n={s['n']})"
+            )
+        if e2e and stats:
+            lines.append("")
         for s in stats:
             lines.append(
                 f"- `{s['span']}`: p50={s['p50']:.0f}ms  p95={s['p95']:.0f}ms  "

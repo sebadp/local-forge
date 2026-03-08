@@ -909,10 +909,13 @@ class Repository:
         return row[0] or "", row[1] or ""
 
     async def get_trace_scores(self, trace_id: str) -> list[dict]:
+        resolved = await self._resolve_trace_id(trace_id)
+        if resolved is None:
+            return []
         cursor = await self._conn.execute(
             "SELECT id, name, value, source, comment, span_id, created_at "
             "FROM trace_scores WHERE trace_id = ? ORDER BY created_at",
-            (trace_id,),
+            (resolved,),
         )
         rows = await cursor.fetchall()
         return [
@@ -929,11 +932,14 @@ class Repository:
         ]
 
     async def get_trace_with_spans(self, trace_id: str) -> dict | None:
+        resolved = await self._resolve_trace_id(trace_id)
+        if resolved is None:
+            return None
         cursor = await self._conn.execute(
             "SELECT id, phone_number, input_text, output_text, wa_message_id, "
             "message_type, status, started_at, completed_at, metadata "
             "FROM traces WHERE id = ?",
-            (trace_id,),
+            (resolved,),
         )
         row = await cursor.fetchone()
         if not row:
@@ -954,7 +960,7 @@ class Repository:
             "SELECT id, parent_id, name, kind, input, output, status, "
             "started_at, completed_at, latency_ms, metadata "
             "FROM trace_spans WHERE trace_id = ? ORDER BY started_at",
-            (trace_id,),
+            (resolved,),
         )
         span_rows = await span_cursor.fetchall()
         trace["spans"] = [
@@ -1492,12 +1498,32 @@ class Repository:
             for r in rows
         ]
 
+    async def _resolve_trace_id(self, trace_id: str) -> str | None:
+        """Expand a truncated trace_id prefix to a full ID.
+
+        Returns the full ID if found, None otherwise. If already full (32 chars), returns as-is.
+        """
+        if len(trace_id) >= 32:
+            return trace_id
+        cursor = await self._conn.execute(
+            "SELECT id FROM traces WHERE id LIKE ? LIMIT 1",
+            (trace_id + "%",),
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else None
+
     async def get_trace_tool_calls(self, trace_id: str) -> list[dict]:
-        """Return tool call spans for a trace with full input/output."""
+        """Return tool call spans for a trace with full input/output.
+
+        Supports truncated trace_id prefixes (e.g. 12-char from review_interactions).
+        """
+        resolved = await self._resolve_trace_id(trace_id)
+        if resolved is None:
+            return []
         cursor = await self._conn.execute(
             "SELECT id, name, input, output, status, started_at, latency_ms "
             "FROM trace_spans WHERE trace_id = ? AND kind = 'tool' ORDER BY started_at",
-            (trace_id,),
+            (resolved,),
         )
         rows = await cursor.fetchall()
         return [
@@ -1582,24 +1608,46 @@ class Repository:
                 results.append(_compute_percentiles(sname, [r[0] for r in lat_rows]))
             return results
 
+    async def get_e2e_latency_percentiles(self, days: int = 7) -> list[dict]:
+        """Return p50/p95/p99 of end-to-end message processing time from the traces table."""
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                CAST(
+                    (julianday(completed_at) - julianday(started_at)) * 86400000
+                AS REAL) AS latency_ms
+            FROM traces
+            WHERE completed_at IS NOT NULL
+              AND status = 'completed'
+              AND started_at >= datetime('now', ? || ' days')
+            ORDER BY latency_ms ASC
+            """,
+            (f"-{days}",),
+        )
+        rows = await cursor.fetchall()
+        values = [r[0] for r in rows if r[0] is not None and r[0] > 0]
+        if not values:
+            return []
+        return [_compute_percentiles("end_to_end", values)]
+
     async def get_search_hit_rate(self, days: int = 7) -> list[dict]:
         """Return distribution of semantic search modes from span metadata.
 
-        Requires that search_stats were stored in trace_spans.metadata_json under span
-        name 'phase_b'. Returns empty list if no data is available.
+        Reads search_mode from the phase_ab span metadata (stored since baseline measurement
+        was added in Plan 36 prep). Returns empty list if no data is available.
         """
         cursor = await self._conn.execute(
             """
             SELECT
-                json_extract(metadata_json, '$.search_mode') AS mode,
+                json_extract(metadata, '$.search_mode') AS mode,
                 COUNT(*) AS n,
-                AVG(json_extract(metadata_json, '$.memories_retrieved')) AS avg_retrieved,
-                AVG(json_extract(metadata_json, '$.memories_passed')) AS avg_passed
+                AVG(json_extract(metadata, '$.memories_retrieved')) AS avg_retrieved,
+                AVG(json_extract(metadata, '$.memories_passed')) AS avg_passed
             FROM trace_spans
-            WHERE name = 'phase_b'
+            WHERE name = 'phase_ab'
               AND started_at >= datetime('now', ? || ' days')
-              AND metadata_json IS NOT NULL
-              AND json_extract(metadata_json, '$.search_mode') IS NOT NULL
+              AND metadata IS NOT NULL
+              AND json_extract(metadata, '$.search_mode') IS NOT NULL
             GROUP BY mode
             ORDER BY n DESC
             """,
