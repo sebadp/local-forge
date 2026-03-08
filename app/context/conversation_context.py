@@ -75,6 +75,9 @@ class ConversationContext:
     # Embeddings (optional)
     query_embedding: list[float] | None = None
 
+    # Semantic search stats (populated during build, best-effort)
+    search_stats: dict = field(default_factory=dict)
+
     # Token budget estimate (populated after build)
     token_estimate: int = 0
 
@@ -125,7 +128,9 @@ class ConversationContext:
                 )
                 return result[0]
             except Exception:
-                logger.warning("ConversationContext: failed to compute query embedding", exc_info=True)
+                logger.warning(
+                    "ConversationContext: failed to compute query embedding", exc_info=True
+                )
                 return None
 
         async def _get_daily_logs() -> str | None:
@@ -166,28 +171,46 @@ class ConversationContext:
                     lines.append(f"  - {p.name}: {done}/{total} tasks ({pct}%)")
                 return "\n".join(lines)
             except Exception:
-                logger.warning("ConversationContext: failed to fetch projects summary", exc_info=True)
+                logger.warning(
+                    "ConversationContext: failed to fetch projects summary", exc_info=True
+                )
                 return None
 
-        async def _get_memories_with_threshold(embedding: list[float] | None) -> list[str]:
+        async def _get_memories_with_threshold(
+            embedding: list[float] | None,
+        ) -> tuple[list[str], dict]:
+            stats: dict = {
+                "search_mode": "full_fallback",
+                "memories_retrieved": 0,
+                "memories_passed": 0,
+                "memories_returned": 0,
+            }
             if embedding is not None and settings is not None:
                 try:
                     results = await repository.search_similar_memories_with_distance(
                         embedding,
                         top_k=settings.semantic_search_top_k,
                     )
+                    stats["memories_retrieved"] = len(results)
                     threshold = settings.memory_similarity_threshold
                     passed = [content for content, dist in results if dist < threshold]
+                    stats["memories_passed"] = len(passed)
                     if not passed and results:
                         passed = [content for content, _ in results[:3]]
-                    return passed
+                        stats["search_mode"] = "fallback_threshold"
+                    else:
+                        stats["search_mode"] = "semantic"
+                    stats["memories_returned"] = len(passed)
+                    return passed, stats
                 except Exception:
                     logger.warning(
                         "ConversationContext: semantic memory search failed, falling back",
                         exc_info=True,
                     )
             top_k = settings.semantic_search_top_k if settings else 10
-            return await repository.get_active_memories(limit=top_k)
+            memories = await repository.get_active_memories(limit=top_k)
+            stats["memories_returned"] = len(memories)
+            return memories, stats
 
         verbatim_count = settings.history_verbatim_count if settings else 8
 
@@ -195,19 +218,23 @@ class ConversationContext:
         query_embedding = await _get_query_embedding()
 
         # Step 2: parallel fetches (all independent now that embedding is ready)
-        memories_raw, windowed, sticky, logs, relevant_notes, projects_summary = (
-            await asyncio.gather(
-                _get_memories_with_threshold(query_embedding),
-                conversation_manager.get_windowed_history(
-                    phone_number, verbatim_count=verbatim_count
-                ),
-                repository.get_sticky_categories(conv_id) if conv_id else _empty_list(),
-                _get_daily_logs(),
-                _get_relevant_notes(query_embedding),
-                _get_projects_summary(),
-            )
+        (
+            memories_and_stats,
+            windowed,
+            sticky,
+            logs,
+            relevant_notes,
+            projects_summary,
+        ) = await asyncio.gather(
+            _get_memories_with_threshold(query_embedding),
+            conversation_manager.get_windowed_history(phone_number, verbatim_count=verbatim_count),
+            repository.get_sticky_categories(conv_id) if conv_id else _empty_list(),
+            _get_daily_logs(),
+            _get_relevant_notes(query_embedding),
+            _get_projects_summary(),
         )
 
+        memories_raw, search_stats = memories_and_stats
         history, summary = windowed
 
         user_facts = extract_facts(memories_raw)
@@ -217,6 +244,12 @@ class ConversationContext:
                 len(user_facts),
                 list(user_facts.keys()),
             )
+
+        logger.debug(
+            "ConversationContext: search_stats=%s",
+            search_stats,
+            extra={"search_stats": search_stats, "phone": phone_number},
+        )
 
         return cls(
             phone_number=phone_number,
@@ -231,4 +264,5 @@ class ConversationContext:
             projects_summary=projects_summary,
             sticky_categories=sticky or [],
             query_embedding=query_embedding,
+            search_stats=search_stats,
         )

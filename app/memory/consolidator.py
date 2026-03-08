@@ -51,7 +51,9 @@ async def consolidate_memories(
     try:
         from app.eval.prompt_manager import get_active_prompt
 
-        consolidate_template = await get_active_prompt("consolidator", repository, CONSOLIDATE_PROMPT)
+        consolidate_template = await get_active_prompt(
+            "consolidator", repository, CONSOLIDATE_PROMPT
+        )
     except Exception:
         consolidate_template = CONSOLIDATE_PROMPT
 

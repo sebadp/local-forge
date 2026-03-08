@@ -71,6 +71,20 @@ def test_policy_engine_missing_file_defaults_to_block(tmp_path):
     assert decision.action == PolicyAction.BLOCK
 
 
+def test_policy_engine_missing_file_is_misconfigured(tmp_path):
+    """PolicyEngine must report misconfigured=True when the file is missing."""
+    engine = PolicyEngine(tmp_path / "nonexistent.yaml")
+    assert engine.is_misconfigured is True
+
+
+def test_policy_engine_valid_file_not_misconfigured(tmp_path):
+    """PolicyEngine with a valid file must NOT be misconfigured."""
+    policy_file = tmp_path / "policies.yaml"
+    policy_file.write_text('version: "1.0"\ndefault_action: "allow"\nrules: []\n')
+    engine = PolicyEngine(policy_file)
+    assert engine.is_misconfigured is False
+
+
 def test_policy_engine_existing_file_default_allow_unchanged(tmp_path):
     """A policy file with default_action=allow still works as before."""
     policy_file = tmp_path / "policies.yaml"

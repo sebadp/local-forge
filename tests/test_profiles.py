@@ -203,7 +203,7 @@ def test_build_system_prompt_partial_profile():
 
 async def test_get_user_profile_creates_row(repository):
     profile = await repository.get_user_profile("5491100000001")
-    assert profile["onboarding_state"] == "pending"
+    assert profile["onboarding_state"] == "complete"
     assert profile["data"] == {}
     assert profile["message_count"] == 0
 
@@ -211,7 +211,7 @@ async def test_get_user_profile_creates_row(repository):
 async def test_get_user_profile_idempotent(repository):
     await repository.get_user_profile("5491100000002")
     profile2 = await repository.get_user_profile("5491100000002")
-    assert profile2["onboarding_state"] == "pending"
+    assert profile2["onboarding_state"] == "complete"
 
 
 async def test_save_user_profile(repository):

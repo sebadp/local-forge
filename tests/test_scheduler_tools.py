@@ -22,7 +22,7 @@ def _setup_scheduler(received_at: datetime | None = None):
     mock_scheduler.get_jobs.return_value = []
 
     mock_wa = AsyncMock()
-    set_scheduler(mock_scheduler, mock_wa)
+    set_scheduler(mock_scheduler, whatsapp=mock_wa)
     ts = received_at or datetime.now(UTC)
     set_current_user("5491112345678", received_at=ts)
     return mock_scheduler

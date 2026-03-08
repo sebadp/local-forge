@@ -180,7 +180,11 @@ async def create_plan(
     try:
         from app.eval.prompt_manager import get_active_prompt
 
-        planner_template = await get_active_prompt("planner_create", repository, _PLANNER_SYSTEM_PROMPT) if repository else _PLANNER_SYSTEM_PROMPT
+        planner_template = (
+            await get_active_prompt("planner_create", repository, _PLANNER_SYSTEM_PROMPT)
+            if repository
+            else _PLANNER_SYSTEM_PROMPT
+        )
     except Exception:
         planner_template = _PLANNER_SYSTEM_PROMPT
 
@@ -257,7 +261,11 @@ async def replan(
     try:
         from app.eval.prompt_manager import get_active_prompt
 
-        replan_template = await get_active_prompt("planner_replan", repository, _REPLAN_SYSTEM_PROMPT) if repository else _REPLAN_SYSTEM_PROMPT
+        replan_template = (
+            await get_active_prompt("planner_replan", repository, _REPLAN_SYSTEM_PROMPT)
+            if repository
+            else _REPLAN_SYSTEM_PROMPT
+        )
     except Exception:
         replan_template = _REPLAN_SYSTEM_PROMPT
 
@@ -346,7 +354,11 @@ async def synthesize(
     try:
         from app.eval.prompt_manager import get_active_prompt
 
-        synth_template = await get_active_prompt("planner_synthesize", repository, _SYNTHESIZE_SYSTEM_PROMPT) if repository else _SYNTHESIZE_SYSTEM_PROMPT
+        synth_template = (
+            await get_active_prompt("planner_synthesize", repository, _SYNTHESIZE_SYSTEM_PROMPT)
+            if repository
+            else _SYNTHESIZE_SYSTEM_PROMPT
+        )
     except Exception:
         synth_template = _SYNTHESIZE_SYSTEM_PROMPT
 
@@ -365,9 +377,7 @@ async def synthesize(
         if trace:
             async with trace.span("llm:planner_synthesize", kind="generation") as _span:
                 tasks_done = sum(1 for t in plan.tasks if t.status == "done")
-                _span.set_input(
-                    {"tasks_done": tasks_done, "tasks_total": len(plan.tasks)}
-                )
+                _span.set_input({"tasks_done": tasks_done, "tasks_total": len(plan.tasks)})
                 response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
                 _span.set_metadata(
                     {

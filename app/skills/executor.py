@@ -133,8 +133,27 @@ async def _run_tool_call(
                 tool_name, arguments, "block", decision.reason, "blocked_by_policy"
             ),
         )
-        error_msg = f"Security Policy Blocked execution: {decision.reason}"
-        logger.warning(f"Blocked tool {tool_name}: {decision.reason}")
+        if policy.is_misconfigured:
+            logger.error(
+                "Tool %s blocked because security policy file is missing or invalid. "
+                "Create data/security_policies.yaml (copy from data/security_policies.yaml.example).",
+                tool_name,
+            )
+            error_msg = (
+                f"CONFIGURATION ERROR: Tool '{tool_name}' is blocked because the security policy "
+                "file is missing or invalid. Tell the user: the file "
+                "'data/security_policies.yaml' does not exist or has errors. "
+                "They should copy 'data/security_policies.yaml.example' to "
+                "'data/security_policies.yaml' and restart the server."
+            )
+        else:
+            error_msg = (
+                f"POLICY BLOCK: Tool '{tool_name}' was blocked by security policy. "
+                f"Reason: {decision.reason}. "
+                "If the user needs this tool, they should add an 'allow' rule for it "
+                "in 'data/security_policies.yaml'."
+            )
+            logger.warning("Blocked tool %s: %s", tool_name, decision.reason)
         return ChatMessage(role="tool", content=error_msg)
 
     if decision.requires_flag:

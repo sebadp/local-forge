@@ -77,3 +77,8 @@ def get_vec_available(request: Request) -> bool:
 def get_trace_recorder(request: Request):
     """Return the TraceRecorder singleton, or None if tracing is disabled."""
     return getattr(request.app.state, "trace_recorder", None)
+
+
+def get_telegram_client(request: Request):
+    """Return the TelegramClient, or None if Telegram is disabled."""
+    return getattr(request.app.state, "telegram_client", None)

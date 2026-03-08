@@ -2,12 +2,13 @@
 
 **De Developer a AI Engineer: Boilerplate para construir asistentes con LLMs locales.**
 
-LocalForge no es solo un asistente personal de WhatsApp impulsado por Ollama; es un **proyecto base open source de investigación y aprendizaje**. Está diseñado para que cualquier desarrollador pueda hacer un *fork*, ensuciarse las manos y entender cómo se orquestan las piezas fundamentales de una aplicación GenAI 100% privada, local y gratuita.
+LocalForge no es solo un asistente personal multi-plataforma (WhatsApp, Telegram) impulsado por Ollama; es un **proyecto base open source de investigación y aprendizaje**. Está diseñado para que cualquier desarrollador pueda hacer un *fork*, ensuciarse las manos y entender cómo se orquestan las piezas fundamentales de una aplicación GenAI 100% privada, local y gratuita.
 
 ```text
-Tu celular ──► WhatsApp ──► Meta Cloud API ──► ngrok ──► FastAPI ──► Ollama (local)
-                                                              │
-                                                           SQLite
+Tu celular ──► WhatsApp  ──► Meta Cloud API ─┐
+                                              ├──► ngrok ──► FastAPI ──► Ollama (local)
+Tu celular ──► Telegram  ──► Bot API ─────────┘                 │
+                                                              SQLite
 ```
 
 ## 💡 El propósito del proyecto
@@ -19,10 +20,10 @@ Si estás buscando dar el salto al desarrollo con IA, en este repositorio vas a 
 - **Model Context Protocol (MCP)**: Integración nativa con servidores MCP. Permite auto-expandir las capacidades del asistente en *runtime* instalando servidores desde plataformas como Smithery.
 - **Edición Bidireccional (`MEMORY.md`)**: El sistema sincroniza las memorias en texto plano con la base de datos automáticamente (usando *watchdogs* de *filesystem*).
 - **Consolidación de Memoria**: Resúmenes automáticos y extracción de hechos y eventos en *background* antes de compactar el historial.
-- **Multimodalidad Local**: Soporte nativo y gratuito para notas de voz entrantes de WhatsApp (transcripción con Whisper) e imágenes (analizadas con LLaVA).
+- **Multimodalidad Local**: Soporte nativo y gratuito para notas de voz y mensajes de WhatsApp o Telegram (transcripción con Whisper) e imágenes (analizadas con LLaVA).
 - **Observabilidad en IA**: Integración con Langfuse para trazar *prompts*, latencias, consumo de *tokens* y el flujo de llamadas a herramientas.
 
-Todo conectado a la API oficial de WhatsApp Cloud (sin riesgo de ban), dockerizado, cubierto con +300 tests y listo para experimentar con costo de operación **cero**.
+Soporta WhatsApp Cloud API y Telegram Bot API simultáneamente, con feature flags independientes por plataforma. Dockerizado, cubierto con +600 tests y listo para experimentar con costo de operación **cero**.
 
 ## Quickstart
 
@@ -96,7 +97,18 @@ app/
 ├── config.py                # Pydantic Settings (.env)
 ├── models.py                # Modelos de datos (ChatMessage, Memory, Note, etc.)
 ├── dependencies.py          # FastAPI dependency injection
-│   └── splitter.py          # Split de mensajes largos
+├── formatting/
+│   ├── markdown_to_wa.py    # Markdown → WhatsApp wikitext
+│   ├── telegram_md.py       # Markdown → Telegram HTML
+│   ├── splitter.py          # Split de mensajes largos (>4096 chars)
+│   └── compaction.py        # JSON-aware compaction (3 niveles)
+├── platforms/
+│   ├── base.py              # PlatformClient Protocol (interfaz común)
+│   └── models.py            # IncomingMessage + Platform StrEnum
+├── telegram/
+│   ├── client.py            # TelegramClient (implementa PlatformClient)
+│   ├── parser.py            # Telegram Update → IncomingMessage
+│   └── router.py            # POST /telegram/webhook + validación
 ├── memory/
 │   ├── markdown.py          # Sync SQLite <-> MEMORY.md (bidireccional)
 │   ├── watcher.py           # File watcher (watchdog) para edición manual de MEMORY.md
@@ -125,6 +137,7 @@ skills/                      # Definiciones de skills (SKILL.md)
 |------------|------------|
 | Servidor | Python 3.11+ / FastAPI |
 | WhatsApp | Cloud API oficial de Meta |
+| Telegram | Bot API v7 (webhook, HTML parse mode) |
 | Túnel | ngrok (free tier) |
 | LLM | Ollama (local) |
 | Embeddings | nomic-embed-text via Ollama (768 dims) |
@@ -132,11 +145,11 @@ skills/                      # Definiciones de skills (SKILL.md)
 | Observabilidad | Langfuse (Server + PostgreSQL en Docker) |
 | Contenedores | Docker + Docker Compose |
 
-### Flujo de un mensaje
+### Flujo de un mensaje (multi-plataforma)
 
-1. Mensaje llega de WhatsApp → Meta lo envía como webhook POST
+1. Mensaje llega de WhatsApp (webhook POST `/webhook`) o Telegram (`/telegram/webhook`)
 2. ngrok tuneliza a `localhost:8000`
-3. FastAPI valida firma HMAC, dedup atómico, extrae el mensaje
+3. FastAPI valida firma (HMAC para WhatsApp, `X-Telegram-Bot-Api-Secret-Token` para Telegram), dedup atómico, convierte a `IncomingMessage` vía parser de la plataforma
 4. Si es audio → se transcribe con Whisper; si es imagen → se describe con llava
 5. Si es un `/comando` → se ejecuta directamente, sin pasar por el LLM
 6. Si es texto normal:
@@ -146,7 +159,7 @@ skills/                      # Definiciones de skills (SKILL.md)
    - Se cargan memorias relevantes + notas relevantes + skills summary + resumen previo + historial reciente
    - Si hay skills disponibles → tool calling loop (LLM ↔ tools, max 5 iteraciones)
    - Si no hay skills → chat directo con Ollama
-   - La respuesta se formatea (markdown→WhatsApp), se splitea si es larga, y se envía
+   - La respuesta se formatea (markdown→formato nativo de la plataforma), se splitea si es larga, y se envía
    - Si el historial supera el threshold:
      - Se extraen hechos → memorias + eventos → daily log (pre-compaction flush)
      - Se auto-embeden los hechos extraídos
@@ -190,6 +203,8 @@ El sistema de memoria tiene 3 capas:
 
 Variables de entorno (ver [.env.example](.env.example)):
 
+### WhatsApp
+
 | Variable | Descripción | Default |
 |----------|-------------|---------|
 | `WHATSAPP_ACCESS_TOKEN` | Token de la API de Meta | (requerido) |
@@ -197,6 +212,21 @@ Variables de entorno (ver [.env.example](.env.example)):
 | `WHATSAPP_VERIFY_TOKEN` | Token de verificación del webhook | (requerido) |
 | `WHATSAPP_APP_SECRET` | Secret de la app de Meta | (requerido) |
 | `ALLOWED_PHONE_NUMBERS` | Números permitidos (comma-separated) | (requerido) |
+
+### Telegram (opcional)
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `TELEGRAM_ENABLED` | Habilitar integración Telegram | `false` |
+| `TELEGRAM_BOT_TOKEN` | Token del bot (obtener de @BotFather) | `""` |
+| `TELEGRAM_WEBHOOK_SECRET` | Secret para validar webhooks | `""` |
+| `ALLOWED_TELEGRAM_CHAT_IDS` | IDs permitidos (comma-separated, vacío = todos) | `""` |
+| `TELEGRAM_WEBHOOK_URL` | Si se setea, auto-registra webhook en startup | `""` |
+
+### General
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
 | `OLLAMA_BASE_URL` | URL de Ollama | `http://ollama:11434` |
 | `OLLAMA_MODEL` | Modelo de chat | `qwen3:8b` |
 | `VISION_MODEL` | Modelo de visión | `llava:7b` |
@@ -231,7 +261,7 @@ make test
 docker compose run --rm localforge python -m pytest tests/ -v
 ```
 
-316 tests cubriendo: repository, conversation manager, comandos, parser, markdown memory, summarizer, daily logs, memory flush, session snapshots, consolidator, embeddings, sqlite-vec, semantic search, memory watcher, webhook (verificación, mensajes, comandos), health check, cliente Ollama, cliente WhatsApp, validación de firma, skill loader, skill registry, tool executor, tool router, MCP, y cada skill (datetime, calculator, weather, notes, search, news, scheduler, tools).
+655 tests cubriendo: repository, conversation manager, comandos, parser, markdown memory, summarizer, daily logs, memory flush, session snapshots, consolidator, embeddings, sqlite-vec, semantic search, memory watcher, webhook (verificación, mensajes, comandos), health check, cliente Ollama, cliente WhatsApp, validación de firma, skill loader, skill registry, tool executor, tool router, MCP, cliente Telegram, parser Telegram, formatter HTML, platform adapter, y cada skill (datetime, calculator, weather, notes, search, news, scheduler, tools).
 
 ## Desarrollo local
 
@@ -314,5 +344,6 @@ Para más información acerca de cómo descargar, eliminar y configurar Ollama p
 - [x] **Fase 11**: Modo Agéntico (Planner-Orchestrator, workers, Human-in-the-Loop, persistencia de sesiones, gestión de proyectos).
 - [x] **Fase 12**: Seguridad Agéntica (PolicyEngine, AuditTrail SHA-256, shell/git/workspace tools, debug tools).
 - [x] **Fase 13**: Context Engineering v2 (token budget, ContextBuilder XML, windowed history, agent scratchpad, prompt versioning).
+- [x] **Fase 14**: Multi-plataforma (Telegram, PlatformClient Protocol, Adapter pattern).
 
 Ver [PRODUCT_PLAN.md](PRODUCT_PLAN.md) para el detalle de cada fase.

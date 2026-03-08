@@ -7,6 +7,7 @@ import os
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING
 
+import anyio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
@@ -168,10 +169,12 @@ class McpManager:
                 name,
                 MCP_CONNECT_TIMEOUT,
             )
-            await server_stack.aclose()
+            with anyio.CancelScope(shield=True):
+                await server_stack.aclose()
         except Exception as e:
             logger.error("Failed to connect to MCP server %s: %s", name, e)
-            await server_stack.aclose()
+            with anyio.CancelScope(shield=True):
+                await server_stack.aclose()
 
     async def _load_tools(self, server_name: str, session: ClientSession) -> None:
         """Fetch tools from the server and register them as ToolDefinitions."""
@@ -252,7 +255,8 @@ class McpManager:
         # Close per-server stack
         if name in self._server_stacks:
             try:
-                await self._server_stacks[name].aclose()
+                with anyio.CancelScope(shield=True):
+                    await self._server_stacks[name].aclose()
             except Exception as e:
                 logger.warning("Error closing MCP server %s: %s", name, e)
             del self._server_stacks[name]
@@ -397,7 +401,12 @@ class McpManager:
         """Close all connections."""
         for name, stack in list(self._server_stacks.items()):
             try:
-                await stack.aclose()
+                # Shield each close from any active anyio cancellation.
+                # stdio_client / streamable_http_client use anyio cancel scopes
+                # internally; exiting them while the outer scope is being cancelled
+                # raises "Attempted to exit cancel scope in a different task".
+                with anyio.CancelScope(shield=True):
+                    await stack.aclose()
             except Exception as e:
                 logger.error("Error closing MCP server %s: %s", name, e)
         self._server_stacks.clear()

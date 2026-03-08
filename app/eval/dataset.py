@@ -21,11 +21,15 @@ async def maybe_curate_to_dataset(
     output_text: str | None,
     repository: object,
     failed_check_names: list[str] | None = None,
+    trace_recorder: object | None = None,
 ) -> None:
     """Auto-curate a completed trace to the eval dataset. Best-effort — never raises.
 
     failed_check_names: list of guardrail check names that failed (e.g. ["language_match"]).
     Used to populate guardrail:<name> tags on failure entries so the dataset is filterable.
+
+    trace_recorder: optional TraceRecorder — if provided, golden/correction entries are also
+    synced to Langfuse Datasets (best-effort).
     """
     try:
         scores = await repository.get_trace_scores(trace_id)  # type: ignore[attr-defined]
@@ -43,9 +47,7 @@ async def maybe_curate_to_dataset(
         # Failure takes priority — detecting problems is most valuable
         if any_system_failure or has_negative_user:
             failure_tags = (
-                [f"guardrail:{name}" for name in failed_check_names]
-                if failed_check_names
-                else None
+                [f"guardrail:{name}" for name in failed_check_names] if failed_check_names else None
             )
             await repository.add_dataset_entry(  # type: ignore[attr-defined]
                 trace_id=trace_id,
@@ -67,6 +69,16 @@ async def maybe_curate_to_dataset(
                 metadata={"confirmed": True},
             )
             logger.debug("Curated trace %s as golden (confirmed)", trace_id)
+            if trace_recorder is not None:
+                try:
+                    await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
+                        dataset_name="localforge-eval",
+                        input_text=input_text,
+                        expected_output=output_text,
+                        metadata={"entry_type": "golden", "trace_id": trace_id, "confirmed": True},
+                    )
+                except Exception:
+                    logger.debug("Failed to sync golden trace %s to Langfuse", trace_id)
             return
 
         # Golden candidate: system OK, no user signal yet
@@ -90,10 +102,13 @@ async def add_correction_pair(
     bad_output: str | None,
     correction_text: str,
     repository: object,
+    trace_recorder: object | None = None,
 ) -> None:
     """Save a correction pair: previous (bad) trace + user correction as expected output.
 
     Called from router when a high-confidence correction is detected.
+
+    trace_recorder: optional TraceRecorder — if provided, also syncs to Langfuse Datasets.
     """
     try:
         await repository.add_dataset_entry(  # type: ignore[attr-defined]
@@ -104,5 +119,19 @@ async def add_correction_pair(
             expected_output=correction_text,
         )
         logger.debug("Saved correction pair for trace %s", previous_trace_id)
+        if trace_recorder is not None:
+            try:
+                await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
+                    dataset_name="localforge-eval",
+                    input_text=input_text,
+                    expected_output=correction_text,
+                    metadata={
+                        "entry_type": "correction",
+                        "trace_id": previous_trace_id,
+                        "confirmed": True,
+                    },
+                )
+            except Exception:
+                logger.debug("Failed to sync correction pair %s to Langfuse", previous_trace_id)
     except Exception:
         logger.exception("Failed to save correction pair for trace %s", previous_trace_id)

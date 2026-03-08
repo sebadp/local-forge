@@ -277,6 +277,53 @@ def register(
             lines.append(f"- entry #{r['entry_id']}: {icon}")
         return "\n".join(lines)
 
+    async def get_latency_stats(span_name: str = "all", days: int = 7) -> str:
+        """Return p50/p95/p99 latency stats per pipeline span for the last N days."""
+        try:
+            target = None if span_name == "all" else span_name
+            stats = await repository.get_latency_percentiles(target, days=days)
+        except Exception:
+            logger.exception("get_latency_stats failed")
+            return "Error retrieving latency stats."
+
+        if not stats:
+            return (
+                f"No latency data found for span='{span_name}' in the last {days} days. "
+                "Make sure tracing_enabled=True and some interactions have been processed."
+            )
+
+        lines = [f"*Latencias p50/p95/p99 — últimos {days} días*", ""]
+        for s in stats:
+            lines.append(
+                f"- `{s['span']}`: p50={s['p50']:.0f}ms  p95={s['p95']:.0f}ms  "
+                f"p99={s['p99']:.0f}ms  max={s['max']:.0f}ms  (n={s['n']})"
+            )
+        return "\n".join(lines)
+
+    async def get_search_stats(days: int = 7) -> str:
+        """Return distribution of semantic search modes (hit vs fallback) for the last N days."""
+        try:
+            stats = await repository.get_search_hit_rate(days=days)
+        except Exception:
+            logger.exception("get_search_stats failed")
+            return "Error retrieving search stats."
+
+        if not stats:
+            return (
+                f"No hay datos de búsqueda semántica en los últimos {days} días. "
+                "Asegurate de que tracing_enabled=True y que los spans Phase B tengan metadata."
+            )
+
+        total = sum(s["n"] for s in stats)
+        lines = [f"*Búsqueda semántica — últimos {days} días (n={total})*", ""]
+        for s in stats:
+            pct = s["n"] / total * 100 if total else 0
+            lines.append(
+                f"- `{s['mode']}`: {s['n']} requests ({pct:.0f}%)  "
+                f"recuperadas={s['avg_retrieved']:.1f}  pasaron_threshold={s['avg_passed']:.1f}"
+            )
+        return "\n".join(lines)
+
     async def get_dashboard_stats(days: int = 30) -> str:
         """Return a comprehensive dashboard: failure trend + score distribution by check."""
         try:
@@ -470,6 +517,42 @@ def register(
             },
         },
         handler=run_quick_eval,
+        skill_name=_SKILL_NAME,
+    )
+
+    registry.register_tool(
+        name="get_latency_stats",
+        description="Return p50/p95/p99 latency for each pipeline span (classify_intent, embed, execute_tool_loop, guardrails, etc.)",
+        parameters={
+            "type": "object",
+            "properties": {
+                "span_name": {
+                    "type": "string",
+                    "description": "Span name to filter (default 'all' = all frequent spans)",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Number of days to look back (default 7)",
+                },
+            },
+        },
+        handler=get_latency_stats,
+        skill_name=_SKILL_NAME,
+    )
+
+    registry.register_tool(
+        name="get_search_stats",
+        description="Return distribution of semantic search modes (semantic vs fallback) to help calibrate memory_similarity_threshold",
+        parameters={
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "Number of days to look back (default 7)",
+                },
+            },
+        },
+        handler=get_search_stats,
         skill_name=_SKILL_NAME,
     )
 

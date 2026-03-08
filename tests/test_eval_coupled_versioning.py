@@ -21,7 +21,9 @@ from app.eval.prompt_manager import activate_with_eval
 async def test_activate_with_eval_returns_error_for_missing_version(repository):
     """activate_with_eval must return error dict when version doesn't exist."""
     ollama = AsyncMock()
-    result = await activate_with_eval("classifier", version=99, repository=repository, ollama_client=ollama)
+    result = await activate_with_eval(
+        "classifier", version=99, repository=repository, ollama_client=ollama
+    )
     assert "error" in result
     assert "99" in result["error"]
     ollama.chat.assert_not_called()
@@ -29,7 +31,9 @@ async def test_activate_with_eval_returns_error_for_missing_version(repository):
 
 async def test_activate_with_eval_returns_no_entries_when_dataset_empty(repository):
     """activate_with_eval must gracefully handle empty dataset."""
-    await repository.save_prompt_version("classifier", version=1, content="test prompt", created_by="test")
+    await repository.save_prompt_version(
+        "classifier", version=1, content="test prompt", created_by="test"
+    )
     await repository.activate_prompt_version("classifier", version=1)
 
     ollama = AsyncMock()
@@ -44,7 +48,9 @@ async def test_activate_with_eval_returns_no_entries_when_dataset_empty(reposito
 
 async def test_activate_with_eval_never_activates(repository):
     """activate_with_eval must NEVER activate — always returns activated=False."""
-    await repository.save_prompt_version("summarizer", version=1, content="summarize this", created_by="test")
+    await repository.save_prompt_version(
+        "summarizer", version=1, content="summarize this", created_by="test"
+    )
     await repository.activate_prompt_version("summarizer", version=1)
 
     # Add a dataset entry
@@ -77,7 +83,9 @@ async def test_activate_with_eval_never_activates(repository):
 
 async def test_activate_with_eval_score_below_threshold(repository):
     """activate_with_eval must mark passed=False when score < threshold."""
-    await repository.save_prompt_version("consolidator", version=2, content="consolidate", created_by="test")
+    await repository.save_prompt_version(
+        "consolidator", version=2, content="consolidate", created_by="test"
+    )
     await repository.activate_prompt_version("consolidator", version=2)
 
     await repository.save_trace(
@@ -99,7 +107,10 @@ async def test_activate_with_eval_score_below_threshold(repository):
     ollama.chat = AsyncMock(side_effect=["Buenos Aires", "no"])  # inference + judge says no
 
     result = await activate_with_eval(
-        "consolidator", version=2, repository=repository, ollama_client=ollama,
+        "consolidator",
+        version=2,
+        repository=repository,
+        ollama_client=ollama,
         eval_threshold=0.7,
     )
     assert result["activated"] is False
@@ -109,7 +120,9 @@ async def test_activate_with_eval_score_below_threshold(repository):
 
 async def test_activate_with_eval_score_above_threshold(repository):
     """activate_with_eval must mark passed=True when score >= threshold."""
-    await repository.save_prompt_version("flush_to_memory", version=1, content="extract facts", created_by="test")
+    await repository.save_prompt_version(
+        "flush_to_memory", version=1, content="extract facts", created_by="test"
+    )
     await repository.activate_prompt_version("flush_to_memory", version=1)
 
     await repository.save_trace(
@@ -131,7 +144,10 @@ async def test_activate_with_eval_score_above_threshold(repository):
     ollama.chat = AsyncMock(side_effect=["Javier Milei", "yes"])  # inference + judge says yes
 
     result = await activate_with_eval(
-        "flush_to_memory", version=1, repository=repository, ollama_client=ollama,
+        "flush_to_memory",
+        version=1,
+        repository=repository,
+        ollama_client=ollama,
         eval_threshold=0.7,
     )
     assert result["activated"] is False
@@ -231,7 +247,9 @@ async def test_approve_prompt_shows_eval_score(repository):
     from app.commands.context import CommandContext
 
     # Seed a prompt version
-    await repository.save_prompt_version("classifier", version=3, content="classify: {msg}", created_by="agent")
+    await repository.save_prompt_version(
+        "classifier", version=3, content="classify: {msg}", created_by="agent"
+    )
 
     ollama = AsyncMock()
 
@@ -264,7 +282,9 @@ async def test_approve_prompt_shows_warning_on_low_score(repository):
     from app.commands.builtins import cmd_approve_prompt
     from app.commands.context import CommandContext
 
-    await repository.save_prompt_version("summarizer", version=2, content="bad prompt", created_by="agent")
+    await repository.save_prompt_version(
+        "summarizer", version=2, content="bad prompt", created_by="agent"
+    )
 
     ollama = AsyncMock()
     context = MagicMock(spec=CommandContext)
@@ -295,7 +315,9 @@ async def test_approve_prompt_activates_even_if_eval_fails(repository):
     from app.commands.builtins import cmd_approve_prompt
     from app.commands.context import CommandContext
 
-    await repository.save_prompt_version("consolidator", version=3, content="some prompt", created_by="agent")
+    await repository.save_prompt_version(
+        "consolidator", version=3, content="some prompt", created_by="agent"
+    )
 
     ollama = AsyncMock()
     context = MagicMock(spec=CommandContext)
@@ -320,7 +342,9 @@ async def test_approve_prompt_no_eval_without_ollama(repository):
     from app.commands.builtins import cmd_approve_prompt
     from app.commands.context import CommandContext
 
-    await repository.save_prompt_version("system_prompt", version=2, content="a new prompt", created_by="agent")
+    await repository.save_prompt_version(
+        "system_prompt", version=2, content="a new prompt", created_by="agent"
+    )
 
     context = MagicMock(spec=CommandContext)
     context.repository = repository

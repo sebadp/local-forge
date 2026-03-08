@@ -69,11 +69,13 @@ class TraceContext:
         input_text: str,
         recorder: TraceRecorder,
         message_type: str = "text",
+        platform: str = "whatsapp",
     ) -> None:
         self.trace_id = uuid.uuid4().hex
         self.phone_number = phone_number
         self.input_text = input_text
         self.message_type = message_type
+        self.platform = platform
         self._recorder = recorder
         self._token: contextvars.Token | None = None
         self._output_text: str | None = None
@@ -86,6 +88,7 @@ class TraceContext:
             self.phone_number,
             self.input_text,
             self.message_type,
+            platform=self.platform,
         )
         return self
 

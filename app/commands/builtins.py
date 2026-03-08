@@ -251,7 +251,10 @@ async def _save_session_snapshot(conv_id: int, context: CommandContext) -> None:
 
 async def cmd_setup(args: str, context: CommandContext) -> str:
     await context.repository.reset_user_profile(context.phone_number)
-    return "Tu perfil ha sido reiniciado. Envíame cualquier mensaje y empezamos de cero."
+    return (
+        "Profile reset! Send me any message to start the guided setup.\n\n"
+        "Perfil reiniciado. Envíame cualquier mensaje para comenzar la configuración guiada."
+    )
 
 
 async def cmd_review_skill(args: str, context: CommandContext) -> str:
@@ -457,7 +460,9 @@ async def cmd_approve_prompt(args: str, context: CommandContext) -> str:
                     icon = "✅" if passed else "⚠️"
                     eval_summary = f"\n{icon} *Eval score:* {score:.0%} — {details}"
                     if not passed:
-                        eval_summary += "\n_Score bajo threshold. Activando de todas formas (advisory)._"
+                        eval_summary += (
+                            "\n_Score bajo threshold. Activando de todas formas (advisory)._"
+                        )
         except Exception:
             logger.exception("activate_with_eval failed in /approve-prompt")
             eval_summary = "\n_Eval: no se pudo correr (activando de todas formas)._"
@@ -705,7 +710,7 @@ def register_builtins(registry: CommandRegistry) -> None:
     registry.register(
         CommandSpec(
             name="setup",
-            description="Reiniciar tu perfil y volver a empezar el onboarding",
+            description="Guided profile setup / Configuración guiada de perfil",
             usage="/setup",
             handler=cmd_setup,
         )
