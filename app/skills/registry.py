@@ -78,6 +78,24 @@ class SkillRegistry:
         try:
             result = await tool.handler(**tool_call.arguments)
             return ToolResult(tool_name=tool_call.name, content=result)
+        except TypeError as e:
+            # Schema mismatch (wrong/extra arguments) — include the actual
+            # parameter names so the LLM can self-correct on next iteration.
+            error_msg = str(e)
+            if "unexpected keyword argument" in error_msg or "required" in error_msg:
+                expected = list(tool.parameters.get("properties", {}).keys())
+                required = tool.parameters.get("required", [])
+                error_msg = (
+                    f"Tool error: {e}. "
+                    f"Expected parameters: {expected}. Required: {required}. "
+                    f"You provided: {list(tool_call.arguments.keys())}."
+                )
+            logger.warning("Tool %s schema mismatch: %s", tool_call.name, error_msg)
+            return ToolResult(
+                tool_name=tool_call.name,
+                content=error_msg,
+                success=False,
+            )
         except Exception as e:
             logger.exception("Tool %s execution failed", tool_call.name)
             return ToolResult(
