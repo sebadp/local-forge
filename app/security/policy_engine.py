@@ -15,6 +15,7 @@ class PolicyEngine:
     def __init__(self, policy_path: Path):
         self.policy_path = policy_path
         self._policy: BasePolicy | None = None
+        self._misconfigured = False
         self._load_policy()
 
     def _load_policy(self):
@@ -23,11 +24,13 @@ class PolicyEngine:
                 logger.warning(
                     f"Security policy file not found at {self.policy_path}. "
                     "Defaulting to BLOCK (fail-secure). "
-                    "Create data/security_policies.yaml to configure rules."
+                    "Create data/security_policies.yaml to configure rules. "
+                    "You can copy data/security_policies.yaml.example as a starting point."
                 )
                 self._policy = BasePolicy(
                     version="1.0", default_action=PolicyAction.BLOCK, rules=[]
                 )
+                self._misconfigured = True
                 return
 
             with open(self.policy_path) as f:
@@ -41,6 +44,18 @@ class PolicyEngine:
                 exc_info=True,
             )
             self._policy = BasePolicy(version="1.0", default_action=PolicyAction.BLOCK, rules=[])
+            self._misconfigured = True
+
+    @property
+    def is_misconfigured(self) -> bool:
+        """True when the policy file is missing or failed to load.
+
+        When misconfigured, the engine blocks all tools as a safety measure.
+        The executor can use this to provide a helpful error message instead
+        of a generic "blocked by policy" that confuses the LLM into telling
+        the user that features are restricted.
+        """
+        return self._misconfigured
 
     def evaluate(self, tool_name: str, arguments: dict) -> PolicyDecision:
         """
