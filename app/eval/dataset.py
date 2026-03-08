@@ -70,12 +70,15 @@ async def maybe_curate_to_dataset(
             )
             logger.debug("Curated trace %s as golden (confirmed)", trace_id)
             if trace_recorder is not None:
-                await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
-                    dataset_name="localforge-eval",
-                    input_text=input_text,
-                    expected_output=output_text,
-                    metadata={"entry_type": "golden", "trace_id": trace_id, "confirmed": True},
-                )
+                try:
+                    await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
+                        dataset_name="localforge-eval",
+                        input_text=input_text,
+                        expected_output=output_text,
+                        metadata={"entry_type": "golden", "trace_id": trace_id, "confirmed": True},
+                    )
+                except Exception:
+                    logger.debug("Failed to sync golden trace %s to Langfuse", trace_id)
             return
 
         # Golden candidate: system OK, no user signal yet
@@ -117,15 +120,18 @@ async def add_correction_pair(
         )
         logger.debug("Saved correction pair for trace %s", previous_trace_id)
         if trace_recorder is not None:
-            await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
-                dataset_name="localforge-eval",
-                input_text=input_text,
-                expected_output=correction_text,
-                metadata={
-                    "entry_type": "correction",
-                    "trace_id": previous_trace_id,
-                    "confirmed": True,
-                },
-            )
+            try:
+                await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
+                    dataset_name="localforge-eval",
+                    input_text=input_text,
+                    expected_output=correction_text,
+                    metadata={
+                        "entry_type": "correction",
+                        "trace_id": previous_trace_id,
+                        "confirmed": True,
+                    },
+                )
+            except Exception:
+                logger.debug("Failed to sync correction pair %s to Langfuse", previous_trace_id)
     except Exception:
         logger.exception("Failed to save correction pair for trace %s", previous_trace_id)

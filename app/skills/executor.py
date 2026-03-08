@@ -153,7 +153,7 @@ async def _run_tool_call(
                 "If the user needs this tool, they should add an 'allow' rule for it "
                 "in 'data/security_policies.yaml'."
             )
-        logger.warning("Blocked tool %s: %s", tool_name, decision.reason)
+            logger.warning("Blocked tool %s: %s", tool_name, decision.reason)
         return ChatMessage(role="tool", content=error_msg)
 
     if decision.requires_flag:

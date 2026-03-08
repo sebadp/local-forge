@@ -34,7 +34,6 @@ def estimate_sections(sections: dict[str, str | None]) -> dict[str, int]:
 
 def log_context_budget_breakdown(
     sections: dict[str, int],
-    context_limit: int = _CONTEXT_LIMIT,
 ) -> None:
     """Log a structured token breakdown per context section.
 

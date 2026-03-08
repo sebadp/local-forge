@@ -201,14 +201,6 @@ curl -X POST "https://api.telegram.org/botTU_TOKEN/setWebhook" \
   -d "secret_token=TU_WEBHOOK_SECRET"
 ```
 
-**Opción B — Manual:** después de levantar la app, registrar el webhook manualmente vía curl agregándole el path `/telegram/webhook`:
-
-```bash
-curl -X POST "https://api.telegram.org/botTU_TOKEN/setWebhook" \
-  -d "url=https://tu-dominio.ngrok-free.app/telegram/webhook" \
-  -d "secret_token=TU_WEBHOOK_SECRET"
-```
-
 Respuesta esperada: `{"ok":true,"result":true,"description":"Webhook was set"}`
 
 ### 4.4 — Whitelist de usuarios (recomendado)

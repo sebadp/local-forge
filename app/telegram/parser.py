@@ -25,7 +25,9 @@ def extract_telegram_messages(payload: dict) -> list[IncomingMessage]:
     timestamp = str(msg["date"])
     reply_to: str | None = None
     if "reply_to_message" in msg:
-        reply_to = str(msg["reply_to_message"]["message_id"])
+        replied = msg["reply_to_message"]
+        replied_from = replied.get("from") or from_info
+        reply_to = f"tg_{replied_from['id']}_{replied['message_id']}"
 
     if "text" in msg:
         return [

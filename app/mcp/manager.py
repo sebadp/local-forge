@@ -255,7 +255,8 @@ class McpManager:
         # Close per-server stack
         if name in self._server_stacks:
             try:
-                await self._server_stacks[name].aclose()
+                with anyio.CancelScope(shield=True):
+                    await self._server_stacks[name].aclose()
             except Exception as e:
                 logger.warning("Error closing MCP server %s: %s", name, e)
             del self._server_stacks[name]

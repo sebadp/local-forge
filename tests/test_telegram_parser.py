@@ -17,7 +17,7 @@ def _make_text_update(
         "text": text,
     }
     if reply_to_id is not None:
-        msg["reply_to_message"] = {"message_id": reply_to_id}
+        msg["reply_to_message"] = {"message_id": reply_to_id, "from": {"id": user_id}}
     return {"update_id": 999, "message": msg}
 
 
@@ -66,7 +66,7 @@ def test_extract_text_with_reply():
     update = _make_text_update(text="Thanks", reply_to_id=50)
     msgs = extract_telegram_messages(update)
     assert len(msgs) == 1
-    assert msgs[0].reply_to_message_id == "50"  # reply_to stays raw (not used for dedup)
+    assert msgs[0].reply_to_message_id == "tg_12345678_50"
 
 
 def test_extract_voice_message():

@@ -102,6 +102,7 @@ class TelegramClient:
 
     async def send_typing_indicator(self, chat_id: str) -> None:
         # Telegram tiene typing nativo que auto-expira en ~5s
+        cid = chat_id.removeprefix("tg_")
         await self._http.post(
             self._url("sendChatAction"),
             json={"chat_id": cid, "action": "typing"},

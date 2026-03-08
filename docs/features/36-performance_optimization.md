@@ -323,11 +323,10 @@ genera su yield**. Si el backfill tarda 5 segundos (500 memorias sin embedding √
 Esto es especialmente grave en deploys con rolling updates o restarts autom√°ticos:
 el container nuevo no pasa el health check hasta que el backfill termine.
 
-**Fix**: Mover a un background task post-yield:
+**Fix**: Crear el task antes del yield, para que corra en background mientras la app acepta requests:
 ```python
-yield  # App ya acepta requests
-# Backfill corre en background, no bloquea nada
 asyncio.create_task(_safe_backfill(repository, ollama_client, model))
+yield  # App ya acepta requests, backfill corre en background
 ```
 
 **Referencia**: [FastAPI Lifespan Events](https://fastapi.tiangolo.com/advanced/events/):
