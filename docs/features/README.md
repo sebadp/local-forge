@@ -44,6 +44,8 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Context Engineering v2 (token budget, XML consolidation, history windowing, capabilities filtering, memory threshold, scratchpad) | [`31-context_engineering_v2.md`](31-context_engineering_v2.md) | Context |
 | Prompt Engineering & Versioning (think=False, few-shot, prompt registry, eval-coupled versioning, /prompts command) | [`32-prompt_engineering.md`](32-prompt_engineering.md) | Eval |
 | Telegram Integration (multi-platform, PlatformClient Protocol, Adapter pattern) | [`35-telegram.md`](35-telegram.md) | Exec Plan 35 |
+| Performance Optimization (parallelization, indexes, event loop, startup) | [`36-performance_optimization.md`](36-performance_optimization.md) | Performance |
+| Métricas y Benchmarking (token budget, guardrails, LLM-as-judge, eval dataset) | [`37-metricas_benchmarking.md`](37-metricas_benchmarking.md) | Eval |
 
 ## Cómo crear un nuevo walkthrough
 

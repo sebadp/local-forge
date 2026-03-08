@@ -251,7 +251,10 @@ async def _save_session_snapshot(conv_id: int, context: CommandContext) -> None:
 
 async def cmd_setup(args: str, context: CommandContext) -> str:
     await context.repository.reset_user_profile(context.phone_number)
-    return "Tu perfil ha sido reiniciado. Envíame cualquier mensaje y empezamos de cero."
+    return (
+        "Profile reset! Send me any message to start the guided setup.\n\n"
+        "Perfil reiniciado. Envíame cualquier mensaje para comenzar la configuración guiada."
+    )
 
 
 async def cmd_review_skill(args: str, context: CommandContext) -> str:
@@ -707,7 +710,7 @@ def register_builtins(registry: CommandRegistry) -> None:
     registry.register(
         CommandSpec(
             name="setup",
-            description="Reiniciar tu perfil y volver a empezar el onboarding",
+            description="Guided profile setup / Configuración guiada de perfil",
             usage="/setup",
             handler=cmd_setup,
         )

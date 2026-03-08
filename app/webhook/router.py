@@ -1500,6 +1500,21 @@ async def _handle_message(
         except Exception:
             logger.exception("Failed to send platform message")
 
+        # First-message welcome: send a brief follow-up mentioning /setup
+        if profile_row["message_count"] == 0 and settings.onboarding_enabled and not in_onboarding:
+            try:
+                await platform_client.send_message(
+                    msg.user_id,
+                    platform_client.format_text(
+                        "Tip: you can run /setup anytime to personalize me "
+                        "(your name, what you do, how to call me).\n\n"
+                        "Tip: podés usar /setup en cualquier momento para personalizarme "
+                        "(tu nombre, a qué te dedicás, cómo llamarme)."
+                    ),
+                )
+            except Exception:
+                logger.debug("Failed to send first-message tip", exc_info=True)
+
         # Increment profile message count and maybe run progressive discovery
         if settings.onboarding_enabled:
             new_count = await repository.increment_profile_message_count(msg.user_id)

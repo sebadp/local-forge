@@ -415,13 +415,13 @@ class Repository:
                 "data": json.loads(row[1]),
                 "message_count": row[2],
             }
-        # Create on first access
+        # Create on first access — new users skip onboarding (opt-in via /setup)
         await self._conn.execute(
-            "INSERT OR IGNORE INTO user_profiles (phone_number) VALUES (?)",
+            "INSERT OR IGNORE INTO user_profiles (phone_number, onboarding_state) VALUES (?, 'complete')",
             (phone_number,),
         )
         await self._conn.commit()
-        return {"onboarding_state": "pending", "data": {}, "message_count": 0}
+        return {"onboarding_state": "complete", "data": {}, "message_count": 0}
 
     async def save_user_profile(self, phone_number: str, state: str, data: dict) -> None:
         """Upsert user profile state and data."""
