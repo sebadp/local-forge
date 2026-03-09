@@ -1663,3 +1663,319 @@ class Repository:
             }
             for r in rows
         ]
+
+    # --- Plan 39: Agent Metrics & Efficacy ---
+
+    async def get_tool_efficiency(self, days: int = 7) -> dict:
+        """Return tool call efficiency metrics: calls/interaction, error rates, iterations."""
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                AVG(tool_count)    AS avg_tools,
+                MAX(tool_count)    AS max_tools,
+                SUM(CASE WHEN tool_count = 0 THEN 1 ELSE 0 END) AS no_tools_count,
+                COUNT(*)           AS total_traces
+            FROM (
+                SELECT t.id, COUNT(s.id) AS tool_count
+                FROM traces t
+                LEFT JOIN trace_spans s
+                  ON s.trace_id = t.id AND s.kind = 'tool'
+                WHERE t.started_at >= datetime('now', ? || ' days')
+                  AND t.status = 'completed'
+                GROUP BY t.id
+            )
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        stats: dict = {
+            "avg_tool_calls": round(row[0] or 0, 2),
+            "max_tool_calls": row[1] or 0,
+            "no_tool_traces": row[2] or 0,
+            "total_traces":   row[3] or 0,
+        }
+
+        cursor = await self._conn.execute(
+            """
+            SELECT AVG(iter_count) AS avg_iters, MAX(iter_count) AS max_iters
+            FROM (
+                SELECT trace_id, COUNT(*) AS iter_count
+                FROM trace_spans
+                WHERE name LIKE 'llm:iteration_%'
+                  AND started_at >= datetime('now', ? || ' days')
+                GROUP BY trace_id
+            )
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        stats["avg_llm_iterations"] = round(row[0] or 0, 2)
+        stats["max_llm_iterations"] = row[1] or 0
+
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                name,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS errors
+            FROM trace_spans
+            WHERE kind = 'tool'
+              AND started_at >= datetime('now', ? || ' days')
+            GROUP BY name
+            ORDER BY errors DESC, total DESC
+            LIMIT 10
+            """,
+            (f"-{days}",),
+        )
+        rows = await cursor.fetchall()
+        stats["tool_error_rates"] = [
+            {
+                "tool":       r[0],
+                "total":      r[1],
+                "errors":     r[2],
+                "error_rate": round(r[2] / r[1], 3) if r[1] else 0.0,
+            }
+            for r in rows
+        ]
+        return stats
+
+    async def get_token_consumption(self, days: int = 7) -> dict:
+        """Return avg input/output token usage per generation span for the last N days."""
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                AVG(json_extract(metadata, '$.gen_ai.usage.input_tokens'))  AS avg_input,
+                AVG(json_extract(metadata, '$.gen_ai.usage.output_tokens')) AS avg_output,
+                SUM(json_extract(metadata, '$.gen_ai.usage.input_tokens'))  AS total_input,
+                SUM(json_extract(metadata, '$.gen_ai.usage.output_tokens')) AS total_output,
+                COUNT(*) AS n
+            FROM trace_spans
+            WHERE kind = 'generation'
+              AND started_at >= datetime('now', ? || ' days')
+              AND json_extract(metadata, '$.gen_ai.usage.input_tokens') IS NOT NULL
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        if not row or not row[4]:
+            return {}
+        return {
+            "avg_input_tokens":   round(row[0] or 0, 1),
+            "avg_output_tokens":  round(row[1] or 0, 1),
+            "total_input_tokens": int(row[2] or 0),
+            "total_output_tokens": int(row[3] or 0),
+            "n_generations":      row[4],
+        }
+
+    async def get_tool_redundancy(self, days: int = 7) -> list[dict]:
+        """Detect traces where the same tool was called with identical args (redundant calls)."""
+        cursor = await self._conn.execute(
+            """
+            SELECT trace_id, name, COUNT(*) AS call_count
+            FROM trace_spans
+            WHERE kind = 'tool'
+              AND started_at >= datetime('now', ? || ' days')
+            GROUP BY trace_id, name, input
+            HAVING COUNT(*) > 1
+            ORDER BY call_count DESC
+            LIMIT 20
+            """,
+            (f"-{days}",),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {"trace_id": r[0][:12], "tool": r[1], "repeated_calls": r[2]}
+            for r in rows
+        ]
+
+    async def get_context_quality_metrics(self, days: int = 7) -> dict:
+        """Return context quality aggregates: fill rate, classify upgrade rate, memory relevance."""
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                AVG(value)  AS avg_fill,
+                MAX(value)  AS max_fill,
+                SUM(CASE WHEN value > 0.8 THEN 1 ELSE 0 END) AS near_limit_count,
+                COUNT(*)    AS n
+            FROM trace_scores
+            WHERE name = 'context_fill_rate'
+              AND created_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        result: dict = {
+            "avg_fill_rate":    round((row[0] or 0) * 100, 1),
+            "max_fill_rate":    round((row[1] or 0) * 100, 1),
+            "near_limit_count": row[2] or 0,
+            "fill_n":           row[3] or 0,
+        }
+
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                COUNT(DISTINCT s.trace_id) AS upgraded,
+                (SELECT COUNT(*) FROM traces
+                 WHERE status = 'completed'
+                   AND started_at >= datetime('now', ? || ' days')) AS total
+            FROM trace_scores s
+            WHERE s.name = 'classify_upgrade'
+              AND s.created_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days}", f"-{days}"),
+        )
+        row = await cursor.fetchone()
+        upgraded = row[0] or 0
+        total    = max(row[1] or 1, 1)
+        result["classify_upgrade_rate"] = round(upgraded / total * 100, 1)
+        result["classify_upgraded_n"]   = upgraded
+
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                AVG(json_extract(metadata, '$.memories_retrieved')) AS avg_retrieved,
+                AVG(json_extract(metadata, '$.memories_passed'))    AS avg_passed,
+                AVG(json_extract(metadata, '$.memories_returned'))  AS avg_returned
+            FROM trace_spans
+            WHERE name = 'phase_ab'
+              AND started_at >= datetime('now', ? || ' days')
+              AND json_extract(metadata, '$.memories_retrieved') IS NOT NULL
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        result["avg_memories_retrieved"] = round(row[0] or 0, 1)
+        result["avg_memories_passed"]    = round(row[1] or 0, 1)
+        result["avg_memories_returned"]  = round(row[2] or 0, 1)
+        result["memory_relevance_pct"] = (
+            round((row[1] or 0) / (row[0] or 1) * 100, 1) if (row[0] or 0) > 0 else None
+        )
+        return result
+
+    async def get_context_rot_risk(self, days: int = 7) -> list[dict]:
+        """Correlate context fill rate with guardrail pass rate to detect context rot.
+
+        Returns two buckets: high_context (fill > 0.70) vs normal.
+        A lower avg_guardrail_pass in the high_context bucket signals context rot.
+        """
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                CASE WHEN cf.value > 0.70 THEN 'high_context' ELSE 'normal' END AS bucket,
+                AVG(gp.avg_pass)  AS avg_guardrail_pass,
+                AVG(cf.value)     AS avg_fill_rate,
+                COUNT(*)          AS n
+            FROM trace_scores cf
+            JOIN (
+                SELECT trace_id, AVG(value) AS avg_pass
+                FROM trace_scores
+                WHERE source = 'system'
+                  AND name NOT IN (
+                    'context_fill_rate', 'classify_upgrade',
+                    'repeated_question', 'hitl_escalation', 'goal_completion'
+                  )
+                GROUP BY trace_id
+            ) gp ON gp.trace_id = cf.trace_id
+            WHERE cf.name = 'context_fill_rate'
+              AND cf.created_at >= datetime('now', ? || ' days')
+            GROUP BY bucket
+            ORDER BY bucket
+            """,
+            (f"-{days}",),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "bucket":             r[0],
+                "avg_guardrail_pass": round((r[1] or 0) * 100, 1),
+                "avg_fill_rate_pct":  round((r[2] or 0) * 100, 1),
+                "n":                  r[3],
+            }
+            for r in rows
+        ]
+
+    async def get_planner_metrics(self, days: int = 7) -> dict:
+        """Return planner-orchestrator session metrics: total, replanning rate, avg replans."""
+        cursor = await self._conn.execute(
+            """
+            SELECT COUNT(DISTINCT trace_id) AS total_sessions
+            FROM trace_spans
+            WHERE name = 'planner:create_plan'
+              AND started_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        total = row[0] or 0
+        if total == 0:
+            return {"total_planner_sessions": 0}
+
+        cursor = await self._conn.execute(
+            """
+            SELECT COUNT(DISTINCT trace_id) AS replanned
+            FROM trace_spans
+            WHERE name = 'planner:replan'
+              AND started_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        replanned = row[0] or 0
+
+        cursor = await self._conn.execute(
+            """
+            SELECT AVG(replan_count) FROM (
+                SELECT trace_id, COUNT(*) AS replan_count
+                FROM trace_spans
+                WHERE name = 'planner:replan'
+                  AND started_at >= datetime('now', ? || ' days')
+                GROUP BY trace_id
+            )
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        return {
+            "total_planner_sessions":  total,
+            "replanned_sessions":      replanned,
+            "replanning_rate_pct":     round(replanned / total * 100, 1),
+            "avg_replans_per_session": round(row[0] or 0, 2),
+        }
+
+    async def get_hitl_rate(self, days: int = 7) -> dict:
+        """Return HITL escalation counts and approval rate."""
+        cursor = await self._conn.execute(
+            """
+            SELECT
+                COUNT(*)  AS total,
+                SUM(CASE WHEN value = 1.0 THEN 1 ELSE 0 END) AS approved,
+                SUM(CASE WHEN value = 0.0 THEN 1 ELSE 0 END) AS rejected
+            FROM trace_scores
+            WHERE name = 'hitl_escalation'
+              AND created_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        return {
+            "total_escalations": row[0] or 0,
+            "approved":          row[1] or 0,
+            "rejected":          row[2] or 0,
+        }
+
+    async def get_goal_completion_rate(self, days: int = 7) -> dict:
+        """Return goal completion rate from LLM-as-judge scores on agent sessions."""
+        cursor = await self._conn.execute(
+            """
+            SELECT AVG(value) AS rate, COUNT(*) AS n
+            FROM trace_scores
+            WHERE name = 'goal_completion'
+              AND created_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days}",),
+        )
+        row = await cursor.fetchone()
+        return {
+            "goal_completion_rate_pct": round((row[0] or 0) * 100, 1),
+            "n": row[1] or 0,
+        }
