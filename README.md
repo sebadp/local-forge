@@ -248,6 +248,25 @@ Variables de entorno (ver [.env.example](.env.example)):
 | `LANGFUSE_SECRET_KEY` | Llave privada de Langfuse | `""` |
 | `LANGFUSE_HOST` | Host para telemetría | `http://localhost:3000` |
 
+## Métricas y Performance
+
+LocalForge incluye un stack completo de observabilidad: trazas SQLite, guardrails automáticos, LLM-as-judge y un dataset vivo de evaluación. Antes de modificar el pipeline de rendimiento, es recomendable capturar un **baseline** de las métricas actuales.
+
+```bash
+# Snapshot de los últimos 7 días
+python scripts/baseline.py --db data/localforge.db --days 7
+
+# Dashboard HTML visual
+python scripts/dashboard.py --db data/localforge.db --output reports/dashboard.html
+
+# Estadísticas del agente desde WhatsApp
+"dame las métricas de eficiencia del agente de la última semana"
+```
+
+Para saber cuántos mensajes necesitás antes de que los datos tengan sentido estadístico, cómo leer cada sección del reporte y cómo comparar dos snapshots pre/post optimización, ver:
+
+**[docs/performance_baseline.md](docs/performance_baseline.md)**
+
 ## Tests
 
 ```bash
