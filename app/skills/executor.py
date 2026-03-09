@@ -167,6 +167,20 @@ async def _run_tool_call(
             logger.warning(f"Tool {tool_name} flagged for HITL approval: {decision.reason}")
             try:
                 approved = await hitl_callback(tool_name, arguments, decision.reason or "")
+                # Record HITL escalation as trace score (Plan 39 Fase 3)
+                from app.tracing.context import get_current_trace as _get_trace
+
+                _trace = _get_trace()
+                if _trace:
+                    try:
+                        await _trace.add_score(
+                            name="hitl_escalation",
+                            value=1.0 if approved else 0.0,
+                            source="system",
+                            comment=f"tool={tool_name} approved={approved}",
+                        )
+                    except Exception:
+                        pass
                 if not approved:
                     await loop.run_in_executor(
                         None,

@@ -1281,6 +1281,14 @@ async def _handle_message(
                         recent_messages=history,
                         sticky_categories=sticky_categories or None,
                     )
+                    # Score: tracks how often the initial classify needed context upgrade
+                    if trace_ctx:
+                        await trace_ctx.add_score(
+                            name="classify_upgrade",
+                            value=1.0,
+                            source="system",
+                            comment=f"base={base_result} → upgraded",
+                        )
                 else:
                     pre_classified = base_result
             except Exception:
@@ -1367,6 +1375,17 @@ async def _handle_message(
             history_text = " ".join(m.content or "" for m in context[1:])
             sections = estimate_sections({"system_prompt": system_text, "history": history_text})
             log_context_budget_breakdown(sections)
+
+            # Persist context fill rate as trace score (Plan 39 Fase 2)
+            if trace_ctx and estimated_tokens and settings:
+                _context_limit = getattr(settings, "context_limit", 32000)
+                _fill_pct = min(estimated_tokens / max(_context_limit, 1), 1.0)
+                await trace_ctx.add_score(
+                    name="context_fill_rate",
+                    value=round(_fill_pct, 3),
+                    source="system",
+                    comment=f"tokens={estimated_tokens}",
+                )
         except Exception:
             logger.debug("Token budget estimation failed", exc_info=True)
 

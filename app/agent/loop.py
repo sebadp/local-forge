@@ -747,6 +747,36 @@ async def run_agent_session(
         )
 
 
+async def _score_goal_completion(
+    initial_message: str,
+    final_output: str,
+    ollama_client: OllamaClient,
+    trace_ctx: TraceContext,
+) -> None:
+    """LLM-as-judge: did the agent complete the user's goal? Best-effort background task."""
+    try:
+        prompt = (
+            f"User request: {initial_message[:300]}\n"
+            f"Agent final response: {final_output[:400]}\n\n"
+            "Did the agent's response successfully address the user's request? "
+            "Reply ONLY 'yes' or 'no'."
+        )
+        response = await ollama_client.chat(
+            messages=[{"role": "user", "content": prompt}],
+            think=False,
+        )
+        verdict = (response.content or "").strip().lower()
+        score = 1.0 if verdict.startswith("yes") else 0.0
+        await trace_ctx.add_score(
+            name="goal_completion",
+            value=score,
+            source="system",
+            comment=f"LLM-as-judge: {verdict[:20]}",
+        )
+    except Exception:
+        logger.debug("goal_completion scoring failed (best-effort)", exc_info=True)
+
+
 async def _run_agent_body(
     session: AgentSession,
     ollama_client: OllamaClient,
@@ -837,6 +867,13 @@ async def _run_agent_body(
             session.phone_number,
             markdown_to_whatsapp(f"✅ *Sesión agéntica completada*\n\n{final_message}"),
         )
+
+        # Goal completion scoring — LLM-as-judge, best-effort background (Plan 39 Fase 3)
+        _trace = get_current_trace()
+        if _trace:
+            asyncio.create_task(
+                _score_goal_completion(session.objective, reply, ollama_client, _trace)
+            )
 
     except asyncio.CancelledError:
         session.status = AgentStatus.CANCELLED
