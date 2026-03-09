@@ -25,6 +25,12 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | Performance Optimization — Latencia del Critical Path | [`36-performance_optimization_prd.md`](36-performance_optimization_prd.md) / [`36-performance_optimization_prp.md`](36-performance_optimization_prp.md) | 📋 Pendiente |
 | Metrics Hardening — Token breakdown, latencias p95, semantic hit rate | [`38-metrics_hardening_prd.md`](38-metrics_hardening_prd.md) / [`38-metrics_hardening_prp.md`](38-metrics_hardening_prp.md) | ✅ Completado |
 | Agent Metrics & Efficacy — Tool efficiency, context quality, agent efficacy | [`39-agent_metrics_prd.md`](39-agent_metrics_prd.md) / [`39-agent_metrics_prp.md`](39-agent_metrics_prp.md) | 📋 Pendiente |
+| Architecture Action Plan — Palantir AIP gap analysis + quick wins | [`40-architecture_action_plan.md`](40-architecture_action_plan.md) | 📋 Pendiente |
+| Ontology Data Model — Entity graph, cross-entity search, context enrichment | [`41-ontology_data_model_prd.md`](41-ontology_data_model_prd.md) | 📋 Pendiente |
+| Data Provenance & Lineage | Por crear (`42-data_provenance_prd.md`) | 📋 Pendiente |
+| Token Accuracy — Calibración de estimación de tokens | Por crear (`43-token_accuracy_prd.md`) | 📋 Pendiente |
+| Deployment Maturity — Health checks, K8s, secrets, CI/CD | Por crear (`44-deployment_maturity_prd.md`) | 📋 Pendiente |
+| Operational Automation — Data-driven triggers, alertas | Por crear (`45-operational_automation_prd.md`) | 📋 Pendiente |
 
 ## Convenciones
 
