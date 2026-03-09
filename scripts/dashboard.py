@@ -52,6 +52,13 @@ async def _fetch_all_data(db_path: str, days: int) -> dict:
             "dataset": await repo.get_dataset_stats(),
             "latencies": await repo.get_latency_percentiles(None, days),
             "failures": await repo.get_failed_traces(limit=20),
+            # Plan 39 — agent efficiency
+            "tool_efficiency": await repo.get_tool_efficiency(days),
+            "token_consumption": await repo.get_token_consumption(days),
+            "context_quality": await repo.get_context_quality_metrics(days),
+            "planner": await repo.get_planner_metrics(days),
+            "hitl": await repo.get_hitl_rate(days),
+            "goal_completion": await repo.get_goal_completion_rate(days),
         }
     finally:
         await conn.close()
@@ -70,6 +77,12 @@ def _render_html(data: dict, days: int, langfuse_host: str | None) -> str:  # no
     dataset = data["dataset"]
     latencies = data["latencies"]
     failures = data["failures"]
+    tool_eff  = data.get("tool_efficiency", {})
+    tok       = data.get("token_consumption", {})
+    ctx_qual  = data.get("context_quality", {})
+    planner   = data.get("planner", {})
+    hitl      = data.get("hitl", {})
+    goal      = data.get("goal_completion", {})
 
     total_traces = summary.get("total_traces", 0)
     completed = summary.get("completed_traces", 0)
@@ -192,6 +205,92 @@ def _render_html(data: dict, days: int, langfuse_host: str | None) -> str:  # no
     else:
         latency_html = f"<h2>Latency Percentiles</h2><p class='empty'>No span data for the last {days} days.</p>"
 
+    # ---- Agent Efficiency (Plan 39) ----
+    def _pct_badge(value: float, good_above: float = 80.0) -> str:
+        css = "card-ok" if value >= good_above else "card-warn" if value >= 50.0 else "card-fail"
+        return f'<span class="{css}" style="font-weight:bold">{value:.1f}%</span>'
+
+    # Tool efficiency rows
+    if tool_eff.get("total_traces", 0) > 0:
+        no_tool_pct = _safe_pct(tool_eff["no_tool_traces"], tool_eff["total_traces"])
+        tool_rows_html = f"""
+        <tr><td>Avg tool calls / trace</td><td>{tool_eff['avg_tool_calls']}</td></tr>
+        <tr><td>Max tool calls / trace</td><td>{tool_eff['max_tool_calls']}</td></tr>
+        <tr><td>Traces without tools</td><td>{tool_eff['no_tool_traces']} ({no_tool_pct:.0f}%)</td></tr>
+        <tr><td>Avg LLM iterations / trace</td><td>{tool_eff['avg_llm_iterations']}</td></tr>
+        <tr><td>Max LLM iterations / trace</td><td>{tool_eff['max_llm_iterations']}</td></tr>"""
+        if tool_eff.get("tool_error_rates"):
+            errors = [t for t in tool_eff["tool_error_rates"] if t["errors"] > 0]
+            if errors:
+                tool_rows_html += "<tr><td colspan='2'><strong>Tool Error Rates:</strong></td></tr>"
+                for t in errors[:5]:
+                    tool_rows_html += (
+                        f"<tr><td>&nbsp;&nbsp;<code>{t['tool']}</code></td>"
+                        f"<td class='{'fail' if t['error_rate'] > 0.1 else ''}'>"
+                        f"{t['error_rate']*100:.1f}% ({t['errors']}/{t['total']})</td></tr>"
+                    )
+        agent_tool_section = f"""
+    <h2>Agent Efficiency — Tool Calls (last {days}d)</h2>
+    <table>
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>{tool_rows_html}</tbody>
+    </table>"""
+    else:
+        agent_tool_section = f"<h2>Agent Efficiency — Tool Calls</h2><p class='empty'>No tool call data for the last {days} days.</p>"
+
+    # Token consumption
+    if tok:
+        agent_token_section = f"""
+    <h2>Token Consumption (last {days}d)</h2>
+    <table>
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>
+            <tr><td>Avg input tokens / generation</td><td>{tok['avg_input_tokens']:,.0f}</td></tr>
+            <tr><td>Avg output tokens / generation</td><td>{tok['avg_output_tokens']:,.0f}</td></tr>
+            <tr><td>Total input tokens</td><td>{tok['total_input_tokens']:,}</td></tr>
+            <tr><td>Total output tokens</td><td>{tok['total_output_tokens']:,}</td></tr>
+            <tr><td>Generation spans counted</td><td>{tok['n_generations']}</td></tr>
+        </tbody>
+    </table>"""
+    else:
+        agent_token_section = f"<h2>Token Consumption</h2><p class='empty'>No token metadata for the last {days} days (requires gen_ai.usage spans).</p>"
+
+    # Context quality + agent efficacy combined card row
+    agent_cards = ""
+    fill_rate = ctx_qual.get("avg_fill_rate", 0)
+    fill_n = ctx_qual.get("fill_n", 0)
+    upgrade_rate = ctx_qual.get("classify_upgrade_rate", 0)
+    goal_pct = goal.get("goal_completion_rate_pct", 0)
+    goal_n = goal.get("n", 0)
+    total_hitl = hitl.get("total_escalations", 0)
+    planner_total = planner.get("total_planner_sessions", 0)
+    replan_rate = planner.get("replanning_rate_pct", 0)
+
+    agent_cards = f"""
+    <h2>Context Quality &amp; Agent Efficacy (last {days}d)</h2>
+    <div class="cards">
+        <div class="card {'card-ok' if fill_rate < 70 else 'card-warn' if fill_rate < 90 else 'card-fail'}">
+            <div class="card-value">{fill_rate:.0f}%</div>
+            <div class="card-label">Context fill rate (n={fill_n})</div>
+        </div>
+        <div class="card">
+            <div class="card-value">{upgrade_rate:.0f}%</div>
+            <div class="card-label">Classify upgrades</div>
+        </div>
+        <div class="card {'card-ok' if goal_pct >= 80 else 'card-warn' if goal_pct >= 60 else ('card-fail' if goal_n > 0 else '')}">
+            <div class="card-value">{'—' if goal_n == 0 else f'{goal_pct:.0f}%'}</div>
+            <div class="card-label">Goal completion (n={goal_n})</div>
+        </div>
+        <div class="card">
+            <div class="card-value">{planner_total}</div>
+            <div class="card-label">Planner sessions ({replan_rate:.0f}% replanned)</div>
+        </div>
+        <div class="card {'card-warn' if total_hitl > 0 else 'card-ok'}">
+            <div class="card-value">{total_hitl}</div>
+            <div class="card-label">HITL escalations</div>
+        </div>
+    </div>"""
+
     # ---- Dataset composition ----
     golden_count = dataset.get("golden", 0)
     failure_count = dataset.get("failure", 0)
@@ -274,6 +373,9 @@ def _render_html(data: dict, days: int, langfuse_host: str | None) -> str:  # no
 {guardrails_html}
 {trend_html}
 {latency_html}
+{agent_tool_section}
+{agent_token_section}
+{agent_cards}
 {dataset_html}
 {failures_html}
 <div class="footer">Generated by scripts/dashboard.py · LocalForge</div>

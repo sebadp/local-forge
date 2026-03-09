@@ -13,6 +13,7 @@ Output:
       (load the JSON later to compare against post-optimization)
 
 Metrics captured:
+    Latency:
     - End-to-end message latency (p50/p95/p99)
     - Phase AB total (context build + save_message)
     - Phase A: embedding latency (from phase_ab span metadata)
@@ -23,6 +24,12 @@ Metrics captured:
     - delivery latency
     - Semantic search mode distribution
     - Trace volume (n messages captured)
+
+    Plan 39 — Agent Efficiency:
+    - Tool calls/trace (avg, max), iterations/trace, error rates by tool
+    - Token consumption (avg/total input+output per trace)
+    - Context quality (fill rate, classify upgrade rate, memory relevance proxy)
+    - Agent efficacy (planner sessions, replanning rate, HITL rate, goal completion)
 """
 
 from __future__ import annotations
@@ -31,14 +38,13 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database.db import init_db
 from app.database.repository import Repository, _compute_percentiles
-
 
 # ---------------------------------------------------------------------------
 # Extra queries not yet in Repository
@@ -127,12 +133,19 @@ async def _fetch_baseline(db_path: str, days: int) -> dict:
     repo = Repository(conn)
     try:
         # Core latency percentiles
-        e2e        = await repo.get_e2e_latency_percentiles(days=days)
-        spans      = await repo.get_latency_percentiles(None, days=days)
-        sub_timing = await _get_phase_ab_sub_timings(conn, days)
-        search     = await repo.get_search_hit_rate(days=days)
-        volume     = await _get_trace_volume(conn, days)
+        e2e         = await repo.get_e2e_latency_percentiles(days=days)
+        spans       = await repo.get_latency_percentiles(None, days=days)
+        sub_timing  = await _get_phase_ab_sub_timings(conn, days)
+        search      = await repo.get_search_hit_rate(days=days)
+        volume      = await _get_trace_volume(conn, days)
         tool_detail = await _get_tool_loop_detail(conn, days)
+        # Plan 39 — agent efficiency metrics
+        tool_eff    = await repo.get_tool_efficiency(days=days)
+        token_cons  = await repo.get_token_consumption(days=days)
+        ctx_qual    = await repo.get_context_quality_metrics(days=days)
+        planner     = await repo.get_planner_metrics(days=days)
+        hitl        = await repo.get_hitl_rate(days=days)
+        goal        = await repo.get_goal_completion_rate(days=days)
     finally:
         await conn.close()
 
@@ -140,7 +153,7 @@ async def _fetch_baseline(db_path: str, days: int) -> dict:
     spans_by_name = {s["span"]: s for s in spans}
 
     return {
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": datetime.now(UTC).isoformat(),
         "days":        days,
         "db_path":     db_path,
         "volume":      {**volume, **tool_detail},
@@ -154,8 +167,14 @@ async def _fetch_baseline(db_path: str, days: int) -> dict:
             "guardrails":       spans_by_name.get("guardrails"),
             "delivery":         spans_by_name.get("delivery"),
         },
-        "search_modes": search,
-        "all_spans":    spans,
+        "search_modes":  search,
+        "all_spans":     spans,
+        "tool_efficiency": tool_eff,
+        "token_consumption": token_cons,
+        "context_quality": ctx_qual,
+        "planner":       planner,
+        "hitl":          hitl,
+        "goal_completion": goal,
     }
 
 
@@ -174,11 +193,17 @@ def _fmt_span(label: str, s: dict | None, indent: str = "  ") -> str:
 
 
 def _print_report(data: dict) -> None:
-    lat    = data["latency"]
-    vol    = data["volume"]
-    search = data["search_modes"]
-    days   = data["days"]
-    ts     = data["captured_at"][:19].replace("T", " ")
+    lat      = data["latency"]
+    vol      = data["volume"]
+    search   = data["search_modes"]
+    tool_eff = data.get("tool_efficiency", {})
+    tok      = data.get("token_consumption", {})
+    ctx      = data.get("context_quality", {})
+    planner  = data.get("planner", {})
+    hitl     = data.get("hitl", {})
+    goal     = data.get("goal_completion", {})
+    days     = data["days"]
+    ts       = data["captured_at"][:19].replace("T", " ")
 
     sep = "─" * 60
 
@@ -256,6 +281,85 @@ def _print_report(data: dict) -> None:
             )
     print()
 
+    # Tool efficiency
+    print(f"  {sep}")
+    print("  TOOL EFFICIENCY (Plan 39)")
+    print(f"  {sep}")
+    if not tool_eff:
+        print("  No tool efficiency data yet (requires traces with tool spans).")
+    else:
+        print(f"  Avg tool calls/trace  : {tool_eff.get('avg_tool_calls_per_trace', 0):.2f}")
+        print(f"  Max tool calls/trace  : {tool_eff.get('max_tool_calls_per_trace', 0)}")
+        print(f"  Avg iterations/trace  : {tool_eff.get('avg_iterations_per_trace', 0):.2f}")
+        err_rates = tool_eff.get("error_rates_by_tool", {})
+        if err_rates:
+            print("  Error rates by tool:")
+            for tool_name, rate in sorted(err_rates.items(), key=lambda x: -x[1]):
+                print(f"    {tool_name:<30}: {rate:.1%}")
+    print()
+
+    # Token consumption
+    print(f"  {sep}")
+    print("  TOKEN CONSUMPTION (Plan 39)")
+    print(f"  {sep}")
+    if not tok:
+        print("  No token data yet (requires gen_ai.usage spans in traces).")
+    else:
+        print(f"  Avg input tokens/trace  : {tok.get('avg_input_tokens', 0):.0f}")
+        print(f"  Avg output tokens/trace : {tok.get('avg_output_tokens', 0):.0f}")
+        print(f"  Total input tokens      : {tok.get('total_input_tokens', 0):,}")
+        print(f"  Total output tokens     : {tok.get('total_output_tokens', 0):,}")
+    print()
+
+    # Context quality
+    print(f"  {sep}")
+    print("  CONTEXT QUALITY (Plan 39)")
+    print(f"  {sep}")
+    if not ctx:
+        print("  No context quality data yet (requires context_fill_rate scores).")
+    else:
+        fill = ctx.get("avg_fill_rate")
+        upgrade = ctx.get("classify_upgrade_rate")
+        if fill is not None:
+            print(f"  Avg context fill rate   : {fill:.1%}")
+        if upgrade is not None:
+            print(f"  Classify upgrade rate   : {upgrade:.1%}")
+        mem_rel = ctx.get("memory_relevance_proxy")
+        if mem_rel is not None:
+            print(f"  Memory relevance proxy  : {mem_rel:.3f}")
+    print()
+
+    # Agent efficacy
+    print(f"  {sep}")
+    print("  AGENT EFFICACY (Plan 39)")
+    print(f"  {sep}")
+    if planner:
+        total_p = planner.get("total_planner_sessions", 0)
+        replan_r = planner.get("replanning_rate", 0.0)
+        avg_r    = planner.get("avg_replans", 0.0)
+        print(f"  Planner sessions        : {total_p}")
+        print(f"  Replanning rate         : {replan_r:.1%}")
+        print(f"  Avg replans/session     : {avg_r:.2f}")
+    else:
+        print("  No planner data yet (requires agent sessions with tracing).")
+    if hitl:
+        total_h  = hitl.get("total_escalations", 0)
+        approved = hitl.get("approved", 0)
+        rejected = hitl.get("rejected", 0)
+        print(f"  HITL escalations        : {total_h}")
+        print(f"    Approved              : {approved}")
+        print(f"    Rejected              : {rejected}")
+    if goal:
+        g_avg = goal.get("avg_goal_completion", None)
+        g_n   = goal.get("n", 0)
+        if g_avg is not None:
+            print(f"  Goal completion (LLM)   : {g_avg:.1%}  (n={g_n})")
+        else:
+            print("  Goal completion         : no data yet")
+    elif not (planner or hitl):
+        pass  # already printed "no planner data"
+    print()
+
     # Plan 36 targets
     print(f"  {sep}")
     print("  PLAN 36 TARGETS (for comparison after optimization)")
@@ -265,7 +369,7 @@ def _print_report(data: dict) -> None:
         p50_simple = e2e["p50"]
         target_simple = 1500
         target_tools  = 3500
-        print(f"  Metric                    Baseline    Target")
+        print("  Metric                    Baseline    Target")
         print(f"  end_to_end p50 (all)   : {p50_simple:>8.0f}ms  < {target_simple}ms (simple)")
         if lat["tool_loop"]:
             p50_tools = lat["tool_loop"]["p50"]
