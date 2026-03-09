@@ -869,11 +869,16 @@ async def _run_agent_body(
         )
 
         # Goal completion scoring — LLM-as-judge, run before TraceContext exits so the
-        # score is written while the trace is still active. _score_goal_completion has
-        # its own try/except so errors never propagate here.
+        # score is written while the trace is still active. Guard against CancelledError
+        # so a cancellation during the LLM judge call does not trigger the outer
+        # CancelledError handler (which would send a spurious "session cancelled" message
+        # after the completion message was already delivered).
         _trace = get_current_trace()
         if _trace:
-            await _score_goal_completion(session.objective, reply, ollama_client, _trace)
+            try:
+                await _score_goal_completion(session.objective, reply, ollama_client, _trace)
+            except asyncio.CancelledError:
+                logger.debug("goal_completion scoring cancelled (session already completed)")
 
     except asyncio.CancelledError:
         session.status = AgentStatus.CANCELLED
