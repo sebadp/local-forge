@@ -979,7 +979,7 @@ class Repository:
             }
             for s in span_rows
         ]
-        trace["scores"] = await self.get_trace_scores(trace_id)
+        trace["scores"] = await self.get_trace_scores(resolved)
         return trace
 
     async def get_recent_user_message_embeddings(
@@ -1874,6 +1874,7 @@ class Repository:
                     'context_fill_rate', 'classify_upgrade',
                     'repeated_question', 'hitl_escalation', 'goal_completion'
                   )
+                  AND created_at >= datetime('now', ? || ' days')
                 GROUP BY trace_id
             ) gp ON gp.trace_id = cf.trace_id
             WHERE cf.name = 'context_fill_rate'
@@ -1881,7 +1882,7 @@ class Repository:
             GROUP BY bucket
             ORDER BY bucket
             """,
-            (f"-{days}",),
+            (f"-{days}", f"-{days}"),
         )
         rows = await cursor.fetchall()
         return [

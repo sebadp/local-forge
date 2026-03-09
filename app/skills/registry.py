@@ -90,12 +90,13 @@ class SkillRegistry:
                     f"Expected parameters: {expected}. Required: {required}. "
                     f"You provided: {list(tool_call.arguments.keys())}."
                 )
-            logger.warning("Tool %s schema mismatch: %s", tool_call.name, error_msg)
-            return ToolResult(
-                tool_name=tool_call.name,
-                content=error_msg,
-                success=False,
-            )
+                logger.warning("Tool %s schema mismatch: %s", tool_call.name, error_msg)
+                return ToolResult(
+                    tool_name=tool_call.name,
+                    content=error_msg,
+                    success=False,
+                )
+            raise  # not a schema mismatch — let except Exception log with full traceback
         except Exception as e:
             logger.exception("Tool %s execution failed", tool_call.name)
             return ToolResult(

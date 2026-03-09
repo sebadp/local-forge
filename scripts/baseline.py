@@ -288,14 +288,15 @@ def _print_report(data: dict) -> None:
     if not tool_eff:
         print("  No tool efficiency data yet (requires traces with tool spans).")
     else:
-        print(f"  Avg tool calls/trace  : {tool_eff.get('avg_tool_calls_per_trace', 0):.2f}")
-        print(f"  Max tool calls/trace  : {tool_eff.get('max_tool_calls_per_trace', 0)}")
-        print(f"  Avg iterations/trace  : {tool_eff.get('avg_iterations_per_trace', 0):.2f}")
-        err_rates = tool_eff.get("error_rates_by_tool", {})
+        print(f"  Avg tool calls/trace  : {tool_eff.get('avg_tool_calls', 0):.2f}")
+        print(f"  Max tool calls/trace  : {tool_eff.get('max_tool_calls', 0)}")
+        print(f"  Avg iterations/trace  : {tool_eff.get('avg_llm_iterations', 0):.2f}")
+        err_rates = tool_eff.get("tool_error_rates", [])
         if err_rates:
             print("  Error rates by tool:")
-            for tool_name, rate in sorted(err_rates.items(), key=lambda x: -x[1]):
-                print(f"    {tool_name:<30}: {rate:.1%}")
+            for t in sorted(err_rates, key=lambda x: -x["error_rate"]):
+                if t["errors"] > 0:
+                    print(f"    {t['tool']:<30}: {t['error_rate']:.1%} ({t['errors']}/{t['total']})")
     print()
 
     # Token consumption
@@ -406,7 +407,7 @@ async def main() -> None:
     # Save JSON snapshot
     reports_dir = Path("reports")
     reports_dir.mkdir(exist_ok=True)
-    ts_slug = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts_slug = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     out_path = Path(args.output) if args.output else reports_dir / f"baseline_plan36_{ts_slug}.json"
     out_path.write_text(json.dumps(data, indent=2, default=str))
     print(f"  Snapshot saved → {out_path}")

@@ -317,7 +317,7 @@ GROUP BY name ORDER BY pass_rate ASC;
 Un `language_match` en 0.80 significa que el 20% de las respuestas salen en el idioma
 incorrecto — eso es una señal clara para ajustar el system prompt.
 
-### 5.3 Search modes: qué signfica cada uno
+### 5.3 Search modes: qué significa cada uno
 
 El campo `search_mode` en los spans de `phase_ab` indica cómo se recuperaron las memorias:
 
@@ -447,7 +447,7 @@ el CoT y da respuestas más directas.
 **¿Por qué el dataset tiene tres tiers en vez de solo "buenas" y "malas" respuestas?**
 Porque "buena" tiene grados. Una respuesta que pasó guardrails y recibió 👍 es confiable
 como golden. Una que pasó guardrails pero sin señal de usuario es candidata —
-potencialmente buena pero no confirmada. Un failure es útil para análisis de regresi pero
+potencialmente buena pero no confirmada. Un failure es útil para análisis de regresión, pero
 no como ground truth de entrenamiento. Los tres tiers permiten priorizar: correction >
 confirmed golden > candidate golden > failure.
 

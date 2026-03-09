@@ -1359,6 +1359,7 @@ async def _handle_message(
         # Token budget tracking (logging only, fail-open)
         try:
             from app.context.token_estimator import (
+                _CONTEXT_LIMIT,
                 estimate_sections,
                 log_context_budget,
                 log_context_budget_breakdown,
@@ -1377,9 +1378,8 @@ async def _handle_message(
             log_context_budget_breakdown(sections)
 
             # Persist context fill rate as trace score (Plan 39 Fase 2)
-            if trace_ctx and estimated_tokens and settings:
-                _context_limit = getattr(settings, "context_limit", 32000)
-                _fill_pct = min(estimated_tokens / max(_context_limit, 1), 1.0)
+            if trace_ctx and estimated_tokens:
+                _fill_pct = min(estimated_tokens / _CONTEXT_LIMIT, 1.0)
                 await trace_ctx.add_score(
                     name="context_fill_rate",
                     value=round(_fill_pct, 3),

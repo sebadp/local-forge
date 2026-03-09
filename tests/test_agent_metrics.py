@@ -147,10 +147,21 @@ async def test_get_tool_efficiency_with_data():
 # ---------------------------------------------------------------------------
 
 
-def test_get_token_consumption_empty_returns_empty_dict():
+async def test_get_token_consumption_empty_returns_empty_dict():
     """Returns {} when no generation spans with token metadata."""
-    # Tested indirectly via get_agent_stats: empty repo → no token section shown
-    pass  # covered by get_agent_stats_no_data test
+    from app.database.repository import Repository
+
+    class _FakeConn:
+        async def execute(self, sql, params=()):
+            class _Cur:
+                async def fetchone(self):
+                    return (None, None, None, None, 0)  # all None, n=0
+
+            return _Cur()
+
+    repo = Repository(_FakeConn())  # type: ignore[arg-type]
+    result = await repo.get_token_consumption(days=7)
+    assert result == {}
 
 
 async def test_get_token_consumption_with_data():

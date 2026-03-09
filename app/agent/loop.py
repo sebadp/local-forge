@@ -868,12 +868,12 @@ async def _run_agent_body(
             markdown_to_whatsapp(f"✅ *Sesión agéntica completada*\n\n{final_message}"),
         )
 
-        # Goal completion scoring — LLM-as-judge, best-effort background (Plan 39 Fase 3)
+        # Goal completion scoring — LLM-as-judge, run before TraceContext exits so the
+        # score is written while the trace is still active. _score_goal_completion has
+        # its own try/except so errors never propagate here.
         _trace = get_current_trace()
         if _trace:
-            asyncio.create_task(
-                _score_goal_completion(session.objective, reply, ollama_client, _trace)
-            )
+            await _score_goal_completion(session.objective, reply, ollama_client, _trace)
 
     except asyncio.CancelledError:
         session.status = AgentStatus.CANCELLED
