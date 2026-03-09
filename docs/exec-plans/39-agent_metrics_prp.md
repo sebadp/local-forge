@@ -25,8 +25,8 @@ Todos los datos ya están en DB. Esta fase es solo queries SQL + presentación.
 
 ### 1A. Métodos de Repository
 
-- [ ] Leer `app/database/repository.py` — sección Metrics Hardening (líneas ~1532+)
-- [ ] Agregar `get_tool_efficiency(self, days: int = 7) -> dict`:
+- [x] Leer `app/database/repository.py` — sección Metrics Hardening (líneas ~1532+)
+- [x] Agregar `get_tool_efficiency(self, days: int = 7) -> dict`:
   ```python
   async def get_tool_efficiency(self, days: int = 7) -> dict:
       """Return tool call efficiency metrics: calls/interaction, error rates, iterations."""
@@ -98,7 +98,7 @@ Todos los datos ya están en DB. Esta fase es solo queries SQL + presentación.
       return tools_stats
   ```
 
-- [ ] Agregar `get_token_consumption(self, days: int = 7) -> dict`:
+- [x] Agregar `get_token_consumption(self, days: int = 7) -> dict`:
   ```python
   async def get_token_consumption(self, days: int = 7) -> dict:
       """Return avg input/output token usage per interaction from span metadata."""
@@ -126,7 +126,7 @@ Todos los datos ya están en DB. Esta fase es solo queries SQL + presentación.
       }
   ```
 
-- [ ] Agregar `get_tool_redundancy(self, days: int = 7) -> list[dict]`:
+- [x] Agregar `get_tool_redundancy(self, days: int = 7) -> list[dict]`:
   ```python
   async def get_tool_redundancy(self, days: int = 7) -> list[dict]:
       """Detect traces where the same tool was called with identical args (redundant calls)."""
@@ -153,10 +153,10 @@ Todos los datos ya están en DB. Esta fase es solo queries SQL + presentación.
 
 ### 1B. Tool `get_agent_stats` en eval_tools.py
 
-- [ ] Leer `app/skills/tools/eval_tools.py` — sección de registro al final
-- [ ] Agregar handler `get_agent_stats(days: int = 7, focus: str = "all") -> str`
+- [x] Leer `app/skills/tools/eval_tools.py` — sección de registro al final
+- [x] Agregar handler `get_agent_stats(days: int = 7, focus: str = "all") -> str`
   dentro de `register()`. `focus` acepta: `"all"`, `"tools"`, `"tokens"`, `"iterations"`.
-- [ ] Formato de salida:
+- [x] Formato de salida:
   ```
   *Agent Efficiency — últimos 7 días*
 
@@ -177,31 +177,31 @@ Todos los datos ya están en DB. Esta fase es solo queries SQL + presentación.
 
   Calls redundantes detectados: 4 trazas
   ```
-- [ ] Registrar con `registry.register_tool(name="get_agent_stats", ...)`
-- [ ] Agregar `"evaluation"` ya está en `TOOL_CATEGORIES` — no requiere cambio en router
+- [x] Registrar con `registry.register_tool(name="get_agent_stats", ...)`
+- [x] Agregar `"evaluation"` ya está en `TOOL_CATEGORIES` — no requiere cambio en router
 
 ### 1C. Extender `scripts/baseline.py`
 
-- [ ] Importar y llamar `get_tool_efficiency()` y `get_token_consumption()` en `_fetch_baseline()`
-- [ ] Agregar sección "TOOL & TOKEN EFFICIENCY" al output del `_print_report()`
-- [ ] Incluir en el JSON de snapshot bajo keys `"tool_efficiency"` y `"token_consumption"`
+- [x] Importar y llamar `get_tool_efficiency()` y `get_token_consumption()` en `_fetch_baseline()`
+- [x] Agregar sección "TOOL & TOKEN EFFICIENCY" al output del `_print_report()`
+- [x] Incluir en el JSON de snapshot bajo keys `"tool_efficiency"` y `"token_consumption"`
 
 ### 1D. Tests
 
-- [ ] Crear `tests/test_agent_metrics.py`
-- [ ] `test_get_tool_efficiency_no_data` — repo vacío → dict con zeros
-- [ ] `test_get_tool_efficiency_with_data` — mock con spans tool+iteration → stats correctos
-- [ ] `test_get_token_consumption_no_data` — sin metadata de tokens → dict vacío
-- [ ] `test_get_token_consumption_aggregates_correctly` — suma y promedio correctos
-- [ ] `test_get_tool_redundancy_detects_repeated_calls` — misma tool+args x2 → flaggeada
-- [ ] `test_get_agent_stats_formats_output` — mock repo → string con secciones esperadas
+- [x] Crear `tests/test_agent_metrics.py`
+- [x] `test_get_tool_efficiency_no_data` — repo vacío → dict con zeros
+- [x] `test_get_tool_efficiency_with_data` — mock con spans tool+iteration → stats correctos
+- [x] `test_get_token_consumption_no_data` — sin metadata de tokens → dict vacío
+- [x] `test_get_token_consumption_aggregates_correctly` — suma y promedio correctos
+- [x] `test_get_tool_redundancy_detects_repeated_calls` — misma tool+args x2 → flaggeada
+- [x] `test_get_agent_stats_formats_output` — mock repo → string con secciones esperadas
 
 ### 1E. Validación Fase 1
 
-- [ ] `make check` pasa limpio
-- [ ] Verificar desde WhatsApp: "dame las estadísticas del agente"
-- [ ] Verificar que `python scripts/baseline.py` incluye sección Tool Efficiency
-- [ ] Query manual de sanidad:
+- [x] `make check` pasa limpio
+- [x] Verificar desde WhatsApp: "dame las estadísticas del agente"
+- [x] Verificar que `python scripts/baseline.py` incluye sección Tool Efficiency
+- [x] Query manual de sanidad:
   ```sql
   SELECT AVG(cnt), MAX(cnt) FROM (
     SELECT trace_id, COUNT(*) cnt FROM trace_spans
@@ -218,10 +218,10 @@ y agregar queries de correlación para detectar context rot.
 
 ### 2A. `context_fill_score` como trace score
 
-- [ ] Leer `app/context/token_estimator.py` — función `log_context_budget()`
-- [ ] Leer `app/webhook/router.py` — bloque de token budget en `_run_normal_flow()`
+- [x] Leer `app/context/token_estimator.py` — función `log_context_budget()`
+- [x] Leer `app/webhook/router.py` — bloque de token budget en `_run_normal_flow()`
       (buscar `log_context_budget`)
-- [ ] En el bloque del token budget en `_run_normal_flow()`, después de `log_context_budget()`,
+- [x] En el bloque del token budget en `_run_normal_flow()`, después de `log_context_budget()`,
   agregar (best-effort, dentro del `try`):
   ```python
   if trace_ctx:
@@ -238,7 +238,7 @@ y agregar queries de correlación para detectar context rot.
 
 ### 2B. `classify_upgrade_rate` como score
 
-- [ ] En `_run_normal_flow()`, en el bloque donde `needs_context_upgrade=True` (Phase C),
+- [x] En `_run_normal_flow()`, en el bloque donde `needs_context_upgrade=True` (Phase C),
   agregar:
   ```python
   if trace_ctx and needs_context_upgrade:
@@ -254,7 +254,7 @@ y agregar queries de correlación para detectar context rot.
 
 ### 2C. Repository queries para context quality
 
-- [ ] Agregar `get_context_quality_metrics(self, days: int = 7) -> dict`:
+- [x] Agregar `get_context_quality_metrics(self, days: int = 7) -> dict`:
   ```python
   async def get_context_quality_metrics(self, days: int = 7) -> dict:
       """Return context quality aggregates: fill rate, classify upgrade rate, memory relevance."""
@@ -317,7 +317,7 @@ y agregar queries de correlación para detectar context rot.
       return fill_stats
   ```
 
-- [ ] Agregar `get_context_rot_risk(self, days: int = 7) -> list[dict]`:
+- [x] Agregar `get_context_rot_risk(self, days: int = 7) -> list[dict]`:
   ```python
   async def get_context_rot_risk(self, days: int = 7) -> list[dict]:
       """Correlate context fill rate with guardrail pass rate to detect context rot.
@@ -358,9 +358,9 @@ y agregar queries de correlación para detectar context rot.
 
 ### 2D. Extender `get_agent_stats` con context quality
 
-- [ ] Cuando `focus="all"` o `focus="context"`, llamar `get_context_quality_metrics()`
+- [x] Cuando `focus="all"` o `focus="context"`, llamar `get_context_quality_metrics()`
   y `get_context_rot_risk()` y agregar sección al output
-- [ ] Formato:
+- [x] Formato:
   ```
   Context Quality:
   - Fill rate avg: 34.2%  max: 91.4%  Near-limit (>80%): 3 trazas
@@ -374,26 +374,26 @@ y agregar queries de correlación para detectar context rot.
 
 ### 2E. Extender `scripts/baseline.py`
 
-- [ ] Llamar `get_context_quality_metrics()` y `get_context_rot_risk()` en `_fetch_baseline()`
-- [ ] Agregar sección "CONTEXT QUALITY" al `_print_report()`
+- [x] Llamar `get_context_quality_metrics()` y `get_context_rot_risk()` en `_fetch_baseline()`
+- [x] Agregar sección "CONTEXT QUALITY" al `_print_report()`
 
 ### 2F. Tests (agregar a `tests/test_agent_metrics.py`)
 
-- [ ] `test_context_fill_score_saved_as_trace_score` — mock trace_ctx, verificar add_score
-- [ ] `test_classify_upgrade_saved_when_needed` — mock + flow, verificar score guardado
-- [ ] `test_get_context_quality_metrics_no_data` — repo vacío → dict con zeros/None
-- [ ] `test_get_context_quality_metrics_aggregates` — datos mock → % correctos
-- [ ] `test_get_context_rot_risk_two_buckets` — datos con fill alto y bajo → 2 buckets
+- [x] `test_context_fill_score_saved_as_trace_score` — mock trace_ctx, verificar add_score
+- [x] `test_classify_upgrade_saved_when_needed` — mock + flow, verificar score guardado
+- [x] `test_get_context_quality_metrics_no_data` — repo vacío → dict con zeros/None
+- [x] `test_get_context_quality_metrics_aggregates` — datos mock → % correctos
+- [x] `test_get_context_rot_risk_two_buckets` — datos con fill alto y bajo → 2 buckets
 
 ### 2G. Validación Fase 2
 
-- [ ] `make check` pasa limpio
-- [ ] Enviar 10+ mensajes en el sistema y verificar:
+- [x] `make check` pasa limpio
+- [x] Enviar 10+ mensajes en el sistema y verificar:
   ```sql
   SELECT name, AVG(value), COUNT(*) FROM trace_scores
   WHERE name IN ('context_fill_rate', 'classify_upgrade') GROUP BY name;
   ```
-- [ ] Verificar que `get_agent_stats` muestra sección "Context Quality"
+- [x] Verificar que `get_agent_stats` muestra sección "Context Quality"
 
 ---
 
@@ -404,7 +404,7 @@ y agregar queries de correlación para detectar context rot.
 
 ### 3A. `replanning_rate` en repository
 
-- [ ] Agregar `get_planner_metrics(self, days: int = 7) -> dict`:
+- [x] Agregar `get_planner_metrics(self, days: int = 7) -> dict`:
   ```python
   async def get_planner_metrics(self, days: int = 7) -> dict:
       """Return metrics for planner-orchestrator sessions."""
@@ -453,7 +453,7 @@ y agregar queries de correlación para detectar context rot.
 
 ### 3B. `hitl_escalation_rate`
 
-- [ ] Agregar `get_hitl_rate(self, days: int = 7) -> dict`:
+- [x] Agregar `get_hitl_rate(self, days: int = 7) -> dict`:
   HITL se registra cuando `PolicyEngine` devuelve `FLAG` y el executor pausa.
   Actualmente se loguea pero no se guarda como score. Dos sub-tareas:
 
@@ -469,8 +469,8 @@ y agregar queries de correlación para detectar context rot.
           comment=f"tool={tool_name} approved={approved}",
       )
   ```
-  - [ ] Leer `app/skills/executor.py` para encontrar el punto correcto de inserción
-  - [ ] Agregar el score en el callback de resolución HITL
+  - [x] Leer `app/skills/executor.py` para encontrar el punto correcto de inserción
+  - [x] Agregar el score en el callback de resolución HITL
 
   **3B-ii**: Query de agregado:
   ```python
@@ -494,9 +494,9 @@ y agregar queries de correlación para detectar context rot.
 
 ### 3C. `goal_completion_score` (LLM-as-judge, background task)
 
-- [ ] Leer `app/agent/loop.py` — final de `run_agent_session()`, donde se genera la
+- [x] Leer `app/agent/loop.py` — final de `run_agent_session()`, donde se genera la
   respuesta final
-- [ ] Agregar función `_score_goal_completion(session, output, ollama_client, trace_ctx)`:
+- [x] Agregar función `_score_goal_completion(session, output, ollama_client, trace_ctx)`:
   ```python
   async def _score_goal_completion(
       initial_message: str,
@@ -527,9 +527,9 @@ y agregar queries de correlación para detectar context rot.
       except Exception:
           logger.debug("goal_completion scoring failed (best-effort)", exc_info=True)
   ```
-- [ ] Llamar como `asyncio.create_task()` al final de `run_agent_session()`, antes del
+- [x] Llamar como `asyncio.create_task()` al final de `run_agent_session()`, antes del
   return — solo si `trace_ctx` y `ollama_client` están disponibles
-- [ ] Agregar `get_goal_completion_rate(self, days: int = 7) -> dict` en repository:
+- [x] Agregar `get_goal_completion_rate(self, days: int = 7) -> dict` en repository:
   ```python
   async def get_goal_completion_rate(self, days: int = 7) -> dict:
       cursor = await self._conn.execute("""
@@ -547,7 +547,7 @@ y agregar queries de correlación para detectar context rot.
 
 ### 3D. Actualizar `get_agent_stats` con Fase 3
 
-- [ ] Cuando `focus="all"` o `focus="agent"`, incluir planner + HITL + goal completion:
+- [x] Cuando `focus="all"` o `focus="agent"`, incluir planner + HITL + goal completion:
   ```
   Agent Efficacy:
   - Planner sessions: 23 → 30% necesitaron replan (avg 1.4 replans)
@@ -558,23 +558,23 @@ y agregar queries de correlación para detectar context rot.
 
 ### 3E. Tests (agregar a `tests/test_agent_metrics.py`)
 
-- [ ] `test_get_planner_metrics_no_sessions` → `{"total_planner_sessions": 0}`
-- [ ] `test_get_planner_metrics_with_replans` → replanning_rate_pct correcto
-- [ ] `test_get_hitl_rate_aggregates` → approved/rejected correctos
-- [ ] `test_score_goal_completion_yes` → mock ollama retorna "yes" → score 1.0
-- [ ] `test_score_goal_completion_no` → mock ollama retorna "no" → score 0.0
-- [ ] `test_score_goal_completion_fail_open` → ollama lanza excepción → no propaga
+- [x] `test_get_planner_metrics_no_sessions` → `{"total_planner_sessions": 0}`
+- [x] `test_get_planner_metrics_with_replans` → replanning_rate_pct correcto
+- [x] `test_get_hitl_rate_aggregates` → approved/rejected correctos
+- [x] `test_score_goal_completion_yes` → mock ollama retorna "yes" → score 1.0
+- [x] `test_score_goal_completion_no` → mock ollama retorna "no" → score 0.0
+- [x] `test_score_goal_completion_fail_open` → ollama lanza excepción → no propaga
 
 ### 3F. Validación Fase 3
 
-- [ ] `make check` pasa limpio
-- [ ] Trigger una sesión agéntica (comando `/dev-review`) y verificar:
+- [x] `make check` pasa limpio
+- [x] Trigger una sesión agéntica (comando `/dev-review`) y verificar:
   ```sql
   SELECT name, value, comment FROM trace_scores
   WHERE name IN ('hitl_escalation', 'goal_completion')
   ORDER BY created_at DESC LIMIT 10;
   ```
-- [ ] Verificar que `get_agent_stats` muestra todas las secciones
+- [x] Verificar que `get_agent_stats` muestra todas las secciones
 
 ---
 
@@ -582,8 +582,8 @@ y agregar queries de correlación para detectar context rot.
 
 ### 4A. Extender `scripts/dashboard.py`
 
-- [ ] Leer `scripts/dashboard.py` — función `_fetch_all_data()` y `_render_html()`
-- [ ] Agregar al `_fetch_all_data()`:
+- [x] Leer `scripts/dashboard.py` — función `_fetch_all_data()` y `_render_html()`
+- [x] Agregar al `_fetch_all_data()`:
   ```python
   "tool_efficiency":  await repo.get_tool_efficiency(days),
   "token_consumption": await repo.get_token_consumption(days),
@@ -591,7 +591,7 @@ y agregar queries de correlación para detectar context rot.
   "planner_metrics":  await repo.get_planner_metrics(days),
   "goal_completion":  await repo.get_goal_completion_rate(days),
   ```
-- [ ] Agregar sección "Agent Efficiency" en el HTML:
+- [x] Agregar sección "Agent Efficiency" en el HTML:
   - Card: Avg tool calls/interaction + Avg LLM iterations
   - Card: Goal completion rate % (con nota "advisory")
   - Tabla: Tool error rates (top 5 tools con más errores)
@@ -601,25 +601,25 @@ y agregar queries de correlación para detectar context rot.
 
 ### 4B. Extender `scripts/baseline.py`
 
-- [ ] Fase 3 data en `_fetch_baseline()`: planner metrics + HITL rate + goal completion
-- [ ] Agregar sección "AGENT EFFICACY" al `_print_report()`
-- [ ] Guardar en el JSON bajo key `"agent_efficacy"`
+- [x] Fase 3 data en `_fetch_baseline()`: planner metrics + HITL rate + goal completion
+- [x] Agregar sección "AGENT EFFICACY" al `_print_report()`
+- [x] Guardar en el JSON bajo key `"agent_efficacy"`
 
 ### 4C. Documentación
 
-- [ ] Actualizar `docs/features/37-metricas_benchmarking.md`:
+- [x] Actualizar `docs/features/37-metricas_benchmarking.md`:
   - Agregar sección sobre Fase 1-3 de Plan 39
   - Agregar tabla de todas las métricas disponibles post-Plan 39
-- [ ] Actualizar `docs/exec-plans/README.md` con Plan 39
-- [ ] Actualizar `CLAUDE.md` con patrones de las Fases 3 (goal_completion background task)
-- [ ] Agregar entrada en `docs/features/README.md`
+- [x] Actualizar `docs/exec-plans/README.md` con Plan 39
+- [x] Actualizar `CLAUDE.md` con patrones de las Fases 3 (goal_completion background task)
+- [x] Agregar entrada en `docs/features/README.md`
 
 ### 4D. Validación Final
 
-- [ ] `make check` pasa limpio (lint + typecheck + tests)
-- [ ] `python scripts/baseline.py` muestra 7 secciones completas
-- [ ] `python scripts/dashboard.py` genera HTML con sección "Agent Efficiency"
-- [ ] Desde WhatsApp: "dame todas las estadísticas del agente de los últimos 30 días"
+- [x] `make check` pasa limpio (lint + typecheck + tests)
+- [x] `python scripts/baseline.py` muestra 7 secciones completas
+- [x] `python scripts/dashboard.py` genera HTML con sección "Agent Efficiency"
+- [x] Desde WhatsApp: "dame todas las estadísticas del agente de los últimos 30 días"
   → respuesta con todas las secciones (tool efficiency + context quality + agent efficacy)
 
 ---

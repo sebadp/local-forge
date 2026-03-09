@@ -1,8 +1,8 @@
 # Feature: Métricas y Benchmarking del Pipeline LLM
 
-> **Versión**: v1.0
-> **Fecha**: 2026-03-06
-> **Estado**: Implementado — gaps 1-3, 5-6 resueltos en Plan 38; gap 4 descartado (baja prioridad)
+> **Versión**: v2.0
+> **Fecha**: 2026-03-09
+> **Estado**: Implementado — Plan 38 (latency/search/context metrics) + Plan 39 (agent efficacy metrics)
 
 ---
 
@@ -361,10 +361,9 @@ El campo `search_stats` trackea `search_mode` (semantic/fallback_threshold/full_
 `memories_retrieved`, `memories_passed`, `memories_returned`. Loguea en `context.search_stats`.
 Tool `get_search_stats` en `eval_tools.py` consulta la distribución de modos.
 
-### 4. Tool usage metrics (baja prioridad)
-Qué tools se invocan más, cuáles tienen mayor tasa de error, cuáles nunca se usan.
-Útil para detectar tools redundantes y para calibrar el router de intención.
-**Descartado de Plan 38** — requiere cambios más invasivos en el executor.
+### 4. Agent Efficacy Metrics ✅ Implementado (Plan 39)
+
+Ver sección "Plan 39" más abajo.
 
 ### 5. Dashboard HTML offline ✅ Implementado (Plan 38)
 `scripts/dashboard.py` — genera HTML autocontenido con Chart.js desde CDN.
@@ -377,6 +376,99 @@ Uso: `python scripts/dashboard.py --db data/localforge.db --output reports/dashb
 - `platform` tag en metadata → filtra WhatsApp vs Telegram
 - `update_trace_tags()` → tags de categorías de intent (`math`, `time`, etc.) en cada traza
 - `sync_dataset_to_langfuse()` → golden/correction entries se sincronizan a Langfuse Datasets
+
+---
+
+---
+
+## Plan 39 — Agent Metrics & Efficacy
+
+Plan 38 midió velocidad y calidad de outputs. Plan 39 añade tres capas adicionales:
+
+### Capa 4: Tool Efficiency
+
+**Archivos modificados:** `app/database/repository.py`, `app/skills/executor.py`
+
+Métricas capturadas por `get_tool_efficiency(days)`:
+- `avg_tool_calls` / `max_tool_calls` por traza
+- `avg_llm_iterations` — rounds del tool loop por traza
+- `tool_error_rates` por tool — detecta tools con alta tasa de fallo
+- Número de trazas sin tools (chat puro) vs con tools
+
+Complementado por `get_tool_redundancy(days)` — detecta el mismo tool+args llamado >1x
+en la misma traza (señal de que el LLM está looping sin avance).
+
+**Score `hitl_escalation`** agregado en `executor.py`: si hay callback HITL activo y se
+invoca, se guarda `value=1.0` (aprobado) o `value=0.0` (rechazado). `get_hitl_rate(days)`
+consolida los totales.
+
+### Capa 5: Token Consumption
+
+**Archivo:** `app/database/repository.py` — `get_token_consumption(days)`
+
+Los spans de tipo `generation` ya almacenan `gen_ai.usage.input_tokens` y
+`gen_ai.usage.output_tokens` en metadata. Plan 39 los agrega para reportar:
+- Avg input/output tokens por generación
+- Total de tokens consumidos en el período
+
+Esto es útil para estimar costos si se migra a un API cloud (ej. Claude API).
+
+### Capa 6: Context Quality Scores
+
+**Archivo:** `app/webhook/router.py`
+
+Dos nuevos scores automáticos por interacción:
+
+**`context_fill_rate`** — `estimated_tokens / context_limit` (0.0–1.0). Si >0.8, el contexto
+está near-limit y se arriesga truncamiento. `get_context_quality_metrics(days)` agrega el promedio
+y cuenta cuántas interacciones estuvieron cerca del límite.
+
+**`classify_upgrade`** — score=1.0 si `classify_intent` retornó `"none"` y fue re-clasificado
+con contexto. Un `classify_upgrade_rate` alto indica que el clasificador inicial es poco preciso.
+
+`get_context_rot_risk(days)` correlaciona `context_fill_rate` alto con `guardrail_pass_rate`
+bajo — señal de context rot (degradación de calidad por contexto saturado).
+
+### Capa 7: Agent Efficacy (Planner + Goal Completion)
+
+**Archivos modificados:** `app/agent/loop.py`, `app/database/repository.py`
+
+**`_score_goal_completion()`** en `loop.py` — background task que corre después de que el
+agente envía su respuesta final. LLM-as-judge binario (`think=False`): "¿respondió bien al
+pedido del usuario?" → score `goal_completion` (0.0 o 1.0). Igual que con `run_quick_eval`,
+el auto-juicio puede estar inflado — usar como señal relativa, no como verdad absoluta.
+
+**`get_planner_metrics(days)`** — total de sesiones planner, tasa de replan (>0 replans),
+avg replans/sesión. Si la tasa de replan es alta, el plan inicial no es suficientemente bueno
+o las tareas son demasiado complejas.
+
+### Nuevo tool: `get_agent_stats`
+
+Registrado en `eval_tools.py`. Soporta `focus` enum: `all` | `tools` | `tokens` | `context` | `agent`.
+Desde WhatsApp: "dame las métricas de eficiencia del agente de la última semana".
+
+### Scripts actualizados
+
+**`scripts/baseline.py`** — ahora incluye sección "Plan 39" con tool_efficiency, token_consumption,
+context_quality, planner, hitl, goal_completion en el snapshot JSON y en el reporte de texto.
+
+**`scripts/dashboard.py`** — tres nuevas secciones HTML: "Agent Efficiency — Tool Calls",
+"Token Consumption", "Context Quality & Agent Efficacy" (cards con fill rate, goal completion,
+planner sessions, HITL escalations).
+
+### Archivos clave adicionales (Plan 39)
+
+| Archivo | Cambio |
+|---|---|
+| `app/database/repository.py` | 8 métodos nuevos (ver arriba) |
+| `app/webhook/router.py` | Scores `context_fill_rate` + `classify_upgrade` |
+| `app/skills/executor.py` | Score `hitl_escalation` |
+| `app/agent/loop.py` | `_score_goal_completion()` background task |
+| `app/context/conversation_context.py` | `build_timing` field (embed_ms, searches_ms) |
+| `app/skills/tools/eval_tools.py` | Tool `get_agent_stats(days, focus)` |
+| `scripts/baseline.py` | Sección Plan 39 en snapshot + reporte |
+| `scripts/dashboard.py` | 3 nuevas secciones de agente |
+| `tests/test_agent_metrics.py` | 14 tests (repository + tool handler) |
 
 ---
 
