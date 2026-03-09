@@ -278,21 +278,33 @@ def register(
         return "\n".join(lines)
 
     async def get_latency_stats(span_name: str = "all", days: int = 7) -> str:
-        """Return p50/p95/p99 latency stats per pipeline span for the last N days."""
+        """Return p50/p95/p99 latency stats per pipeline span for the last N days.
+
+        When span_name='all', also includes end-to-end latency from the traces table.
+        The phase_ab span metadata includes embed_ms and searches_ms for Phase A/B breakdown.
+        """
         try:
             target = None if span_name == "all" else span_name
             stats = await repository.get_latency_percentiles(target, days=days)
+            e2e = await repository.get_e2e_latency_percentiles(days=days) if span_name == "all" else []
         except Exception:
             logger.exception("get_latency_stats failed")
             return "Error retrieving latency stats."
 
-        if not stats:
+        if not stats and not e2e:
             return (
                 f"No latency data found for span='{span_name}' in the last {days} days. "
                 "Make sure tracing_enabled=True and some interactions have been processed."
             )
 
         lines = [f"*Latencias p50/p95/p99 — últimos {days} días*", ""]
+        for s in e2e:
+            lines.append(
+                f"- `{s['span']}`: p50={s['p50']:.0f}ms  p95={s['p95']:.0f}ms  "
+                f"p99={s['p99']:.0f}ms  max={s['max']:.0f}ms  (n={s['n']})"
+            )
+        if e2e and stats:
+            lines.append("")
         for s in stats:
             lines.append(
                 f"- `{s['span']}`: p50={s['p50']:.0f}ms  p95={s['p95']:.0f}ms  "
@@ -323,6 +335,124 @@ def register(
                 f"recuperadas={s['avg_retrieved']:.1f}  pasaron_threshold={s['avg_passed']:.1f}"
             )
         return "\n".join(lines)
+
+    async def get_agent_stats(days: int = 7, focus: str = "all") -> str:
+        """Return agent efficiency metrics: tool usage, token consumption, context quality, efficacy.
+
+        focus: 'all' | 'tools' | 'tokens' | 'context' | 'agent'
+        """
+        try:
+            tool_eff   = await repository.get_tool_efficiency(days=days)
+            token_cons = await repository.get_token_consumption(days=days)
+            redundancy = await repository.get_tool_redundancy(days=days)
+            ctx_qual   = await repository.get_context_quality_metrics(days=days)
+            ctx_rot    = await repository.get_context_rot_risk(days=days)
+            planner    = await repository.get_planner_metrics(days=days)
+            hitl       = await repository.get_hitl_rate(days=days)
+            goal       = await repository.get_goal_completion_rate(days=days)
+        except Exception:
+            logger.exception("get_agent_stats failed")
+            return "Error retrieving agent stats."
+
+        lines = [f"*Agent Stats — últimos {days} días*", ""]
+
+        # --- Tool efficiency ---
+        if focus in ("all", "tools") and tool_eff.get("total_traces", 0) > 0:
+            no_tool_pct = tool_eff["no_tool_traces"] / tool_eff["total_traces"] * 100
+            lines += [
+                "*Tool Calls por Interacción:*",
+                f"- Promedio: {tool_eff['avg_tool_calls']}  Max: {tool_eff['max_tool_calls']}",
+                f"- Sin tools (chat puro): {tool_eff['no_tool_traces']} ({no_tool_pct:.0f}%)",
+                f"- Iteraciones LLM — p50: {tool_eff['avg_llm_iterations']}  Max: {tool_eff['max_llm_iterations']}",
+            ]
+            if tool_eff.get("tool_error_rates"):
+                errors = [t for t in tool_eff["tool_error_rates"] if t["errors"] > 0]
+                if errors:
+                    lines.append("")
+                    lines.append("*Tool Error Rates:*")
+                    for t in errors[:5]:
+                        lines.append(
+                            f"- `{t['tool']}`: {t['error_rate']*100:.1f}%"
+                            f" ({t['errors']}/{t['total']})"
+                        )
+            if redundancy:
+                lines.append(f"- Calls redundantes detectadas: {len(redundancy)} trazas")
+            lines.append("")
+
+        # --- Token consumption ---
+        if focus in ("all", "tokens") and token_cons:
+            lines += [
+                "*Token Consumption:*",
+                f"- Avg input:  {token_cons['avg_input_tokens']:,.0f} tok/gen",
+                f"- Avg output: {token_cons['avg_output_tokens']:,.0f} tok/gen",
+                f"- Total input esta semana:  {token_cons['total_input_tokens']:,}",
+                f"- Total output esta semana: {token_cons['total_output_tokens']:,}",
+                f"- (n={token_cons['n_generations']} generaciones)",
+                "",
+            ]
+        elif focus in ("all", "tokens"):
+            lines += ["*Token Consumption:* sin datos (falta metadata gen_ai.usage en spans)", ""]
+
+        # --- Context quality ---
+        if focus in ("all", "context"):
+            if ctx_qual.get("fill_n", 0) > 0:
+                lines += [
+                    "*Context Quality:*",
+                    f"- Fill rate: avg={ctx_qual['avg_fill_rate']}%  max={ctx_qual['max_fill_rate']}%"
+                    f"  near-limit(>80%): {ctx_qual['near_limit_count']}",
+                    f"- Classify upgrade rate: {ctx_qual['classify_upgrade_rate']}%"
+                    f" ({ctx_qual['classify_upgraded_n']} de {ctx_qual['fill_n']} interacciones)",
+                ]
+                if ctx_qual.get("memory_relevance_pct") is not None:
+                    lines.append(
+                        f"- Memory relevance: {ctx_qual['memory_relevance_pct']}% pasaron threshold"
+                        f" (avg {ctx_qual['avg_memories_retrieved']} recuperadas →"
+                        f" {ctx_qual['avg_memories_returned']} usadas)"
+                    )
+            else:
+                lines += ["*Context Quality:* sin datos de context_fill_rate aún"]
+            if ctx_rot:
+                lines.append("")
+                lines.append("*Context Rot Risk:*")
+                for b in ctx_rot:
+                    flag = " ⚠️" if (
+                        b["bucket"] == "high_context"
+                        and len(ctx_rot) == 2
+                        and ctx_rot[0]["avg_guardrail_pass"] - b["avg_guardrail_pass"] > 5
+                    ) else ""
+                    lines.append(
+                        f"- {b['bucket']} (fill={b['avg_fill_rate_pct']}%):"
+                        f" guardrail_pass={b['avg_guardrail_pass']}%  n={b['n']}{flag}"
+                    )
+            lines.append("")
+
+        # --- Agent efficacy ---
+        if focus in ("all", "agent"):
+            lines.append("*Agent Efficacy:*")
+            if planner.get("total_planner_sessions", 0) > 0:
+                lines += [
+                    f"- Planner sessions: {planner['total_planner_sessions']}"
+                    f" → {planner['replanning_rate_pct']}% necesitaron replan"
+                    f" (avg {planner['avg_replans_per_session']} replans)",
+                ]
+            else:
+                lines.append("- Planner: sin sesiones en este período")
+            if hitl["total_escalations"] > 0:
+                lines.append(
+                    f"- HITL escalations: {hitl['total_escalations']}"
+                    f" ({hitl['approved']} aprobadas, {hitl['rejected']} rechazadas)"
+                )
+            if goal["n"] > 0:
+                lines.append(
+                    f"- Goal completion (LLM-as-judge): {goal['goal_completion_rate_pct']}%"
+                    f"  (n={goal['n']})  ⚠️ advisory — auto-juicio puede inflar el score"
+                )
+            lines.append("")
+
+        if not any(lines[2:]):
+            return f"No hay datos de agente en los últimos {days} días. Procesá mensajes con tracing_enabled=True."
+
+        return "\n".join(lines).rstrip()
 
     async def get_dashboard_stats(days: int = 30) -> str:
         """Return a comprehensive dashboard: failure trend + score distribution by check."""
@@ -553,6 +683,27 @@ def register(
             },
         },
         handler=get_search_stats,
+        skill_name=_SKILL_NAME,
+    )
+
+    registry.register_tool(
+        name="get_agent_stats",
+        description="Get agent efficiency metrics: tool calls per interaction, token consumption, LLM iterations, tool error rates, context fill rate, classify upgrade rate, memory relevance, context rot risk, planner replanning rate, HITL escalation rate, and goal completion score.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "Number of days to look back (default 7)",
+                },
+                "focus": {
+                    "type": "string",
+                    "description": "Filter section: 'all' (default), 'tools', 'tokens', 'context', or 'agent'",
+                    "enum": ["all", "tools", "tokens", "context", "agent"],
+                },
+            },
+        },
+        handler=get_agent_stats,
         skill_name=_SKILL_NAME,
     )
 

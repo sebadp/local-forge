@@ -70,7 +70,12 @@ class Settings(BaseSettings):
         "detailed when asked for long or thorough answers. "
         "CRITICAL: When the user provides a URL and you have URL-reading tools available, "
         "ALWAYS use them to fetch the content before responding. "
-        "Do NOT assume a page is inaccessible without trying the tool first."
+        "Do NOT assume a page is inaccessible without trying the tool first. "
+        "GROUNDING RULE: Never fabricate specific facts (tech stacks, percentages, metrics, "
+        "file contents) without reading actual data via tools first. If you only have partial "
+        "information (e.g. a directory listing), say what you see and use tools to read key "
+        "files (README, config files, package.json, requirements.txt) before making claims. "
+        "If a tool call fails, report the error honestly — do not invent the answer."
     )
     conversation_max_messages: int = 20
 

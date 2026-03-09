@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -77,6 +78,10 @@ class ConversationContext:
 
     # Semantic search stats (populated during build, best-effort)
     search_stats: dict = field(default_factory=dict)
+
+    # Phase timing for performance baseline (populated during build)
+    build_timing: dict = field(default_factory=dict)
+    """Latency breakdown: embed_ms (Phase A) and searches_ms (Phase B parallel gather)."""
 
     # Token budget estimate (populated after build)
     token_estimate: int = 0
@@ -215,9 +220,12 @@ class ConversationContext:
         verbatim_count = settings.history_verbatim_count if settings else 8
 
         # Step 1: get query embedding first (needed for memories and notes)
+        _t0 = time.monotonic()
         query_embedding = await _get_query_embedding()
+        _embed_ms = (time.monotonic() - _t0) * 1000
 
         # Step 2: parallel fetches (all independent now that embedding is ready)
+        _t1 = time.monotonic()
         (
             memories_and_stats,
             windowed,
@@ -233,6 +241,8 @@ class ConversationContext:
             _get_relevant_notes(query_embedding),
             _get_projects_summary(),
         )
+        _searches_ms = (time.monotonic() - _t1) * 1000
+        build_timing = {"embed_ms": round(_embed_ms, 1), "searches_ms": round(_searches_ms, 1)}
 
         memories_raw, search_stats = memories_and_stats
         history, summary = windowed
@@ -265,4 +275,5 @@ class ConversationContext:
             sticky_categories=sticky or [],
             query_embedding=query_embedding,
             search_stats=search_stats,
+            build_timing=build_timing,
         )

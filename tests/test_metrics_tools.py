@@ -67,6 +67,7 @@ async def test_get_latency_stats_no_data():
     """Tool returns descriptive message when no spans found."""
     repo = AsyncMock()
     repo.get_latency_percentiles = AsyncMock(return_value=[])
+    repo.get_e2e_latency_percentiles = AsyncMock(return_value=[])
 
     registry = _make_registry_with_eval(repo)
     handler = registry._tools["get_latency_stats"].handler
@@ -79,6 +80,11 @@ async def test_get_latency_stats_no_data():
 async def test_get_latency_stats_all():
     """Tool formats latency data correctly when repository returns stats."""
     repo = AsyncMock()
+    repo.get_e2e_latency_percentiles = AsyncMock(
+        return_value=[
+            {"span": "end_to_end", "n": 143, "p50": 1850.0, "p95": 4200.0, "p99": 6500.0, "max": 8000.0},
+        ]
+    )
     repo.get_latency_percentiles = AsyncMock(
         return_value=[
             {
