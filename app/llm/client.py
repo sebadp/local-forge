@@ -64,7 +64,8 @@ class OllamaClient:
             payload["tools"] = tools
         elif think is False:
             # Explicit False: skip thinking (e.g. fast classification calls)
-            pass
+            # Must send explicitly — qwen3 defaults to thinking if omitted
+            payload["think"] = False
         elif model is None:
             # Only enable thinking for default chat model without tools
             payload["think"] = True

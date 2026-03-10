@@ -50,6 +50,7 @@ from app.database.repository import Repository, _compute_percentiles
 # Extra queries not yet in Repository
 # ---------------------------------------------------------------------------
 
+
 async def _get_phase_ab_sub_timings(conn, days: int) -> dict:
     """Extract embed_ms and searches_ms from phase_ab span metadata."""
     cursor = await conn.execute(
@@ -69,8 +70,8 @@ async def _get_phase_ab_sub_timings(conn, days: int) -> dict:
     if not rows:
         return {}
 
-    embed_values   = sorted(r[0] for r in rows if r[0] is not None)
-    search_values  = sorted(r[1] for r in rows if r[1] is not None)
+    embed_values = sorted(r[0] for r in rows if r[0] is not None)
+    search_values = sorted(r[1] for r in rows if r[1] is not None)
 
     result: dict = {}
     if embed_values:
@@ -100,12 +101,12 @@ async def _get_trace_volume(conn, days: int) -> dict:
     if not row or not row[0]:
         return {"total": 0}
     return {
-        "total":      row[0],
-        "text":       row[1] or 0,
-        "audio":      row[2] or 0,
-        "image":      row[3] or 0,
-        "completed":  row[4] or 0,
-        "failed":     row[5] or 0,
+        "total": row[0],
+        "text": row[1] or 0,
+        "audio": row[2] or 0,
+        "image": row[3] or 0,
+        "completed": row[4] or 0,
+        "failed": row[5] or 0,
     }
 
 
@@ -128,24 +129,25 @@ async def _get_tool_loop_detail(conn, days: int) -> dict:
 # Main fetch
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_baseline(db_path: str, days: int) -> dict:
     conn, _ = await init_db(db_path)
     repo = Repository(conn)
     try:
         # Core latency percentiles
-        e2e         = await repo.get_e2e_latency_percentiles(days=days)
-        spans       = await repo.get_latency_percentiles(None, days=days)
-        sub_timing  = await _get_phase_ab_sub_timings(conn, days)
-        search      = await repo.get_search_hit_rate(days=days)
-        volume      = await _get_trace_volume(conn, days)
+        e2e = await repo.get_e2e_latency_percentiles(days=days)
+        spans = await repo.get_latency_percentiles(None, days=days)
+        sub_timing = await _get_phase_ab_sub_timings(conn, days)
+        search = await repo.get_search_hit_rate(days=days)
+        volume = await _get_trace_volume(conn, days)
         tool_detail = await _get_tool_loop_detail(conn, days)
         # Plan 39 — agent efficiency metrics
-        tool_eff    = await repo.get_tool_efficiency(days=days)
-        token_cons  = await repo.get_token_consumption(days=days)
-        ctx_qual    = await repo.get_context_quality_metrics(days=days)
-        planner     = await repo.get_planner_metrics(days=days)
-        hitl        = await repo.get_hitl_rate(days=days)
-        goal        = await repo.get_goal_completion_rate(days=days)
+        tool_eff = await repo.get_tool_efficiency(days=days)
+        token_cons = await repo.get_token_consumption(days=days)
+        ctx_qual = await repo.get_context_quality_metrics(days=days)
+        planner = await repo.get_planner_metrics(days=days)
+        hitl = await repo.get_hitl_rate(days=days)
+        goal = await repo.get_goal_completion_rate(days=days)
     finally:
         await conn.close()
 
@@ -154,26 +156,27 @@ async def _fetch_baseline(db_path: str, days: int) -> dict:
 
     return {
         "captured_at": datetime.now(UTC).isoformat(),
-        "days":        days,
-        "db_path":     db_path,
-        "volume":      {**volume, **tool_detail},
+        "days": days,
+        "db_path": db_path,
+        "volume": {**volume, **tool_detail},
         "latency": {
-            "end_to_end":       e2e[0]                          if e2e else None,
-            "phase_ab":         spans_by_name.get("phase_ab"),
-            "phase_a_embed":    sub_timing.get("phase_a_embed"),
+            "end_to_end": e2e[0] if e2e else None,
+            "end_to_end_by_type": e2e[1:] if len(e2e) > 1 else [],
+            "phase_ab": spans_by_name.get("phase_ab"),
+            "phase_a_embed": sub_timing.get("phase_a_embed"),
             "phase_b_searches": sub_timing.get("phase_b_searches"),
-            "classify_intent":  spans_by_name.get("llm:classify_intent"),
-            "tool_loop":        spans_by_name.get("tool_loop"),
-            "guardrails":       spans_by_name.get("guardrails"),
-            "delivery":         spans_by_name.get("delivery"),
+            "classify_intent": spans_by_name.get("llm:classify_intent"),
+            "tool_loop": spans_by_name.get("tool_loop"),
+            "guardrails": spans_by_name.get("guardrails"),
+            "delivery": spans_by_name.get("delivery"),
         },
-        "search_modes":  search,
-        "all_spans":     spans,
+        "search_modes": search,
+        "all_spans": spans,
         "tool_efficiency": tool_eff,
         "token_consumption": token_cons,
         "context_quality": ctx_qual,
-        "planner":       planner,
-        "hitl":          hitl,
+        "planner": planner,
+        "hitl": hitl,
         "goal_completion": goal,
     }
 
@@ -181,6 +184,7 @@ async def _fetch_baseline(db_path: str, days: int) -> dict:
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
 
 def _fmt_span(label: str, s: dict | None, indent: str = "  ") -> str:
     if not s:
@@ -193,17 +197,17 @@ def _fmt_span(label: str, s: dict | None, indent: str = "  ") -> str:
 
 
 def _print_report(data: dict) -> None:
-    lat      = data["latency"]
-    vol      = data["volume"]
-    search   = data["search_modes"]
+    lat = data["latency"]
+    vol = data["volume"]
+    search = data["search_modes"]
     tool_eff = data.get("tool_efficiency", {})
-    tok      = data.get("token_consumption", {})
-    ctx      = data.get("context_quality", {})
-    planner  = data.get("planner", {})
-    hitl     = data.get("hitl", {})
-    goal     = data.get("goal_completion", {})
-    days     = data["days"]
-    ts       = data["captured_at"][:19].replace("T", " ")
+    tok = data.get("token_consumption", {})
+    ctx = data.get("context_quality", {})
+    planner = data.get("planner", {})
+    hitl = data.get("hitl", {})
+    goal = data.get("goal_completion", {})
+    days = data["days"]
+    ts = data["captured_at"][:19].replace("T", " ")
 
     sep = "─" * 60
 
@@ -236,7 +240,10 @@ def _print_report(data: dict) -> None:
     print(f"  {sep}")
     print("  END-TO-END LATENCY (full message round-trip)")
     print(f"  {sep}")
-    print(_fmt_span("end_to_end", lat["end_to_end"]))
+    print(_fmt_span("end_to_end (all)", lat["end_to_end"]))
+    for by_type in lat.get("end_to_end_by_type", []):
+        label = by_type["span"].replace("e2e:", "  ")
+        print(_fmt_span(label, by_type))
     print()
 
     # Phase breakdown
@@ -296,7 +303,9 @@ def _print_report(data: dict) -> None:
             print("  Error rates by tool:")
             for t in sorted(err_rates, key=lambda x: -x["error_rate"]):
                 if t["errors"] > 0:
-                    print(f"    {t['tool']:<30}: {t['error_rate']:.1%} ({t['errors']}/{t['total']})")
+                    print(
+                        f"    {t['tool']:<30}: {t['error_rate']:.1%} ({t['errors']}/{t['total']})"
+                    )
     print()
 
     # Token consumption
@@ -322,9 +331,9 @@ def _print_report(data: dict) -> None:
         fill = ctx.get("avg_fill_rate")
         upgrade = ctx.get("classify_upgrade_rate")
         if fill is not None:
-            print(f"  Avg context fill rate   : {fill:.1%}")
+            print(f"  Avg context fill rate   : {fill:.1f}%")
         if upgrade is not None:
-            print(f"  Classify upgrade rate   : {upgrade:.1%}")
+            print(f"  Classify upgrade rate   : {upgrade:.1f}%")
         mem_rel = ctx.get("memory_relevance_proxy")
         if mem_rel is not None:
             print(f"  Memory relevance proxy  : {mem_rel:.3f}")
@@ -336,15 +345,15 @@ def _print_report(data: dict) -> None:
     print(f"  {sep}")
     if planner:
         total_p = planner.get("total_planner_sessions", 0)
-        replan_r = planner.get("replanning_rate", 0.0)
-        avg_r    = planner.get("avg_replans", 0.0)
+        replan_r = planner.get("replanning_rate_pct", 0.0)
+        avg_r = planner.get("avg_replans_per_session", 0.0)
         print(f"  Planner sessions        : {total_p}")
-        print(f"  Replanning rate         : {replan_r:.1%}")
+        print(f"  Replanning rate         : {replan_r:.1f}%")
         print(f"  Avg replans/session     : {avg_r:.2f}")
     else:
         print("  No planner data yet (requires agent sessions with tracing).")
     if hitl:
-        total_h  = hitl.get("total_escalations", 0)
+        total_h = hitl.get("total_escalations", 0)
         approved = hitl.get("approved", 0)
         rejected = hitl.get("rejected", 0)
         print(f"  HITL escalations        : {total_h}")
@@ -352,7 +361,7 @@ def _print_report(data: dict) -> None:
         print(f"    Rejected              : {rejected}")
     if goal:
         g_avg = goal.get("avg_goal_completion", None)
-        g_n   = goal.get("n", 0)
+        g_n = goal.get("n", 0)
         if g_avg is not None:
             print(f"  Goal completion (LLM)   : {g_avg:.1%}  (n={g_n})")
         else:
@@ -369,16 +378,20 @@ def _print_report(data: dict) -> None:
     if e2e:
         p50_simple = e2e["p50"]
         target_simple = 1500
-        target_tools  = 3500
+        target_tools = 3500
         print("  Metric                    Baseline    Target")
         print(f"  end_to_end p50 (all)   : {p50_simple:>8.0f}ms  < {target_simple}ms (simple)")
         if lat["tool_loop"]:
             p50_tools = lat["tool_loop"]["p50"]
             print(f"  tool_loop p50          : {p50_tools:>8.0f}ms  < {target_tools - 1000:.0f}ms")
         if lat["phase_a_embed"]:
-            print(f"  phase_a embed p50      : {lat['phase_a_embed']['p50']:>8.0f}ms  (track improvement)")
+            print(
+                f"  phase_a embed p50      : {lat['phase_a_embed']['p50']:>8.0f}ms  (track improvement)"
+            )
         if lat["phase_b_searches"]:
-            print(f"  phase_b searches p50   : {lat['phase_b_searches']['p50']:>8.0f}ms  (track improvement)")
+            print(
+                f"  phase_b searches p50   : {lat['phase_b_searches']['p50']:>8.0f}ms  (track improvement)"
+            )
     else:
         print("  No latency data yet — run more messages then re-run this script.")
     print()
@@ -388,19 +401,20 @@ def _print_report(data: dict) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Capture performance baseline before Plan 36 optimizations"
     )
-    parser.add_argument("--db",     default="data/localforge.db", help="SQLite database path")
-    parser.add_argument("--days",   type=int, default=7,           help="Lookback window in days (default: 7)")
-    parser.add_argument("--output", default=None,                  help="Override JSON output path")
+    parser.add_argument("--db", default="data/localforge.db", help="SQLite database path")
+    parser.add_argument("--days", type=int, default=7, help="Lookback window in days (default: 7)")
+    parser.add_argument("--output", default=None, help="Override JSON output path")
     return parser.parse_args()
 
 
 async def main() -> None:
-    args   = _parse_args()
-    data   = await _fetch_baseline(args.db, args.days)
+    args = _parse_args()
+    data = await _fetch_baseline(args.db, args.days)
 
     _print_report(data)
 

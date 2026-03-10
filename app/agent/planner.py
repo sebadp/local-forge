@@ -23,37 +23,37 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _PLANNER_SYSTEM_PROMPT = """\
-You are a task planner. Your job is to decompose an objective into concrete steps.
+You are a task planner. Decompose the objective into concrete steps.
 
 OBJECTIVE: {objective}
 
 {context_block}
 
-Create a JSON plan with this exact structure:
+Reply with ONLY a JSON object in this exact format:
+```json
 {{
-  "context_summary": "1-2 sentence summary of what you understand about the task",
+  "context_summary": "Brief summary of the task",
   "tasks": [
-    {{
-      "id": 1,
-      "description": "Clear action to take",
-      "worker_type": "general",
-      "depends_on": []
-    }}
+    {{"id": 1, "description": "Read the repository structure and key files", "worker_type": "reader", "depends_on": []}},
+    {{"id": 2, "description": "Analyze architecture and code quality", "worker_type": "analyzer", "depends_on": [1]}},
+    {{"id": 3, "description": "Write final report with findings", "worker_type": "reporter", "depends_on": [2]}}
   ]
 }}
+```
 
-Worker types:
-- "reader": reads information (files, messages, logs, traces)
-- "analyzer": analyzes data, finds patterns, diagnoses issues
-- "coder": reads and modifies source code
-- "reporter": synthesizes findings into a report
-- "general": does anything (fallback)
+Worker types and their tools:
+- "reader": web search, fetch web pages, GitHub API (get_file_contents, search_repositories), read files
+- "analyzer": GitHub API, web search, evaluation tools, debugging tools
+- "coder": source code tools, shell commands, GitHub (commits, PRs)
+- "reporter": evaluation tools, notes, debugging tools
+- "general": all of the above (use when task spans multiple domains)
 
 Rules:
-- Keep tasks small and specific (1-3 tool calls each)
-- Use depends_on to express ordering (e.g. analyze after read)
-- Maximum 6 tasks per plan
-- Output ONLY valid JSON, nothing else
+- Each task should be substantial (3-5 tool calls). Do NOT make single-tool-call tasks.
+- Use depends_on for ordering. Tasks without dependencies can run in sequence.
+- Maximum 6 tasks. Prefer 3-4 focused tasks over 6 tiny ones.
+- For GitHub repo analysis: first READ the repo structure and key files (README, config, source), then ANALYZE patterns and issues, then REPORT findings.
+- Output ONLY the JSON object. No other text.
 """
 
 _REPLAN_SYSTEM_PROMPT = """\
@@ -92,6 +92,11 @@ ALL STEP RESULTS:
 
 Write a concise, actionable summary of what was accomplished and any key findings.
 Keep it under 500 words. Use markdown formatting.
+
+IMPORTANT: If step results are empty, "(no output)", or contain only error messages,
+report HONESTLY that the task could not be completed. Explain what was attempted and
+what failed. Do NOT fabricate, invent, or hallucinate results. Never claim success
+if the data was not actually gathered.
 """
 
 
@@ -128,13 +133,34 @@ def _parse_plan_json(raw: str, objective: str) -> AgentPlan:
 
     tasks: list[TaskStep] = []
     for t in raw_tasks[:6]:  # Cap at 6 tasks
+        # Coerce ID to int — LLMs sometimes generate strings like "#3-reader"
+        raw_id = t.get("id", len(tasks) + 1)
+        if isinstance(raw_id, int):
+            task_id = raw_id
+        else:
+            import re as _re
+
+            match = _re.search(r"\d+", str(raw_id))
+            task_id = int(match.group()) if match else len(tasks) + 1
+
+        # Coerce depends_on entries to int as well
+        raw_deps = t.get("depends_on", [])
+        deps: list[int] = []
+        for d in raw_deps:
+            if isinstance(d, int):
+                deps.append(d)
+            else:
+                dep_match = _re.search(r"\d+", str(d))
+                if dep_match:
+                    deps.append(int(dep_match.group()))
+
         tasks.append(
             TaskStep(
-                id=t.get("id", len(tasks) + 1),
+                id=task_id,
                 description=t.get("description", "Execute objective"),
                 worker_type=t.get("worker_type", "general"),
                 tools=t.get("tools", []),
-                depends_on=t.get("depends_on", []),
+                depends_on=deps,
             )
         )
 
@@ -202,7 +228,7 @@ async def create_plan(
         if trace:
             async with trace.span("llm:planner_create", kind="generation") as _span:
                 _span.set_input({"objective": objective[:200]})
-                response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
+                response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
                 _span.set_metadata(
                     {
                         "gen_ai.usage.input_tokens": response.input_tokens,
@@ -215,7 +241,7 @@ async def create_plan(
                     {"tasks": len(plan.tasks), "context_summary": plan.context_summary[:200]}
                 )
         else:
-            response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
+            response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
             plan = _parse_plan_json(response.content, objective)
         logger.info(
             "Planner created plan: %d tasks, context=%s",
@@ -289,7 +315,7 @@ async def replan(
                         "tasks_done": sum(1 for t in plan.tasks if t.status == "done"),
                     }
                 )
-                response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
+                response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
                 _span.set_metadata(
                     {
                         "gen_ai.usage.input_tokens": response.input_tokens,
@@ -299,7 +325,7 @@ async def replan(
                 )
                 _span.set_output({"raw_preview": response.content[:200]})
         else:
-            response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
+            response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
         text = response.content.strip()
 
         # Parse the JSON response
@@ -348,7 +374,7 @@ async def synthesize(
     result_lines = []
     for t in plan.tasks:
         status_icon = "done" if t.status == "done" else "failed"
-        result_preview = (t.result or "(no output)")[:300]
+        result_preview = (t.result or "(no output)")[:2000]
         result_lines.append(f"#{t.id} [{status_icon}] {t.description}\n{result_preview}")
 
     try:
@@ -378,7 +404,7 @@ async def synthesize(
             async with trace.span("llm:planner_synthesize", kind="generation") as _span:
                 tasks_done = sum(1 for t in plan.tasks if t.status == "done")
                 _span.set_input({"tasks_done": tasks_done, "tasks_total": len(plan.tasks)})
-                response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
+                response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
                 _span.set_metadata(
                     {
                         "gen_ai.usage.input_tokens": response.input_tokens,
@@ -388,7 +414,7 @@ async def synthesize(
                 )
                 _span.set_output({"reply_preview": response.content[:300]})
         else:
-            response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
+            response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
         return response.content
     except Exception:
         logger.exception("Synthesis failed, returning raw results")

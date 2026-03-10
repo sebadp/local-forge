@@ -4,6 +4,7 @@ from app.commands.builtins import (
     cmd_help,
     cmd_memories,
     cmd_remember,
+    cmd_reset_metrics,
 )
 from app.commands.context import CommandContext
 from app.commands.parser import parse_command
@@ -235,3 +236,41 @@ async def test_cmd_help_with_mcp(repository, memory_file, command_registry):
 async def test_unknown_command(command_registry):
     spec = command_registry.get("nonexistent")
     assert spec is None
+
+
+async def test_cmd_reset_metrics(repository, memory_file, command_registry):
+    """reset-metrics clears traces and eval data but keeps memories."""
+    # Setup: add a memory and a trace
+    await repository.add_memory("Important fact")
+    await repository.save_trace("t1", "123", "hello", "text")
+    await repository.finish_trace("t1", "completed", output_text="world")
+
+    ctx = CommandContext(
+        repository=repository,
+        memory_file=memory_file,
+        phone_number="123",
+        registry=command_registry,
+    )
+    reply = await cmd_reset_metrics("", ctx)
+    assert "reseteadas" in reply.lower() or "cero" in reply.lower()
+
+    # Memories preserved
+    memories = await repository.get_active_memories()
+    assert "Important fact" in memories
+
+    # Traces gone
+    cursor = await repository._conn.execute("SELECT COUNT(*) FROM traces")
+    row = await cursor.fetchone()
+    assert row[0] == 0
+
+
+async def test_cmd_reset_metrics_empty(repository, memory_file, command_registry):
+    """reset-metrics with no data reports zero."""
+    ctx = CommandContext(
+        repository=repository,
+        memory_file=memory_file,
+        phone_number="123",
+        registry=command_registry,
+    )
+    reply = await cmd_reset_metrics("", ctx)
+    assert "cero" in reply.lower()

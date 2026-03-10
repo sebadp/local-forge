@@ -5,7 +5,7 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from app.skills.registry import SkillRegistry
 
@@ -20,7 +20,7 @@ MAX_RESULTS = 5
 def _search_news(query: str, time_range: str | None = None) -> list[dict]:
     """Search DuckDuckGo News. Returns dicts with: date, title, body, url, source, image."""
     results = DDGS().news(
-        keywords=query,
+        query,
         timelimit=time_range,
         max_results=MAX_RESULTS,
     )

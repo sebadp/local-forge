@@ -41,7 +41,8 @@ async def run_guardrails(
     # Language check (configurable)
     language_enabled = settings is None or getattr(settings, "guardrails_language_check", True)
     if language_enabled:
-        _run_check(results, check_language_match, user_text, reply)
+        default_lang = getattr(settings, "guardrails_default_language", None) if settings else None
+        _run_check(results, check_language_match, user_text, reply, default_lang)
 
     # PII check (configurable)
     pii_enabled = settings is None or getattr(settings, "guardrails_pii_check", True)

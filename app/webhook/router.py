@@ -812,13 +812,19 @@ async def _handle_guardrail_failure(
                 "Look at the conversation history and respond in the user's language."
             )
         hint_msg = ChatMessage(role="user", content=hint_content)
+        # Include original reply so LLM translates it instead of regenerating from scratch
+        # (without this, the LLM loses tool results and hallucinates)
+        remediation_context = context + [
+            ChatMessage(role="assistant", content=original_reply),
+            hint_msg,
+        ]
         try:
             if trace_ctx:
                 async with trace_ctx.span("guardrails:remediation", kind="generation") as span:
                     span.set_metadata({"check": "language_match", "lang_code": detected_code})
-                    retry = await ollama_client.chat(context + [hint_msg])
+                    retry = await ollama_client.chat(remediation_context)
             else:
-                retry = await ollama_client.chat(context + [hint_msg])
+                retry = await ollama_client.chat(remediation_context)
             if retry.strip():
                 current_reply = retry
         except Exception:
@@ -1332,13 +1338,26 @@ async def _handle_message(
         _fetch_mode = mcp_manager.get_fetch_mode() if mcp_manager else "unavailable"
         if _has_url_in_msg and _fetch_mode == "mcp-fetch":
             logger.info("URL fetch request using mcp-fetch fallback (Puppeteer unavailable)")
-        _mcp_fetch_note: str | None = (
-            "NOTA DEL SISTEMA: Puppeteer no está disponible. "
-            "Estás usando fetch básico (sin renderizado JavaScript). "
-            "Informa brevemente al usuario de esto en tu respuesta."
-            if _has_url_in_msg and _fetch_mode == "mcp-fetch"
-            else None
+        # Detect YouTube/video URLs — these can't be fetched by any method
+        _youtube_re = _re.compile(
+            r"https?://(?:www\.)?(?:youtube\.com/watch|youtu\.be/|youtube\.com/shorts/)"
         )
+        _has_youtube_url = bool(_youtube_re.search(user_text or "")) if _has_url_in_msg else False
+
+        _mcp_fetch_note: str | None = None
+        if _has_youtube_url:
+            _mcp_fetch_note = (
+                "NOTA DEL SISTEMA: El usuario envió un enlace de YouTube. "
+                "No es posible acceder al contenido de videos de YouTube. "
+                "Informa al usuario que no puedes ver ni acceder a videos de YouTube, "
+                "pero puedes ayudar si te describe el contenido o copia el texto."
+            )
+        elif _has_url_in_msg and _fetch_mode == "mcp-fetch":
+            _mcp_fetch_note = (
+                "NOTA DEL SISTEMA: Puppeteer no está disponible. "
+                "Estás usando fetch básico (sin renderizado JavaScript). "
+                "Informa brevemente al usuario de esto en tu respuesta."
+            )
 
         # Phase D: build context (sync) → main LLM call (~3-8s)
         context = _build_context(

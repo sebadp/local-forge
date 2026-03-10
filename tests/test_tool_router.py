@@ -234,3 +234,28 @@ def test_build_request_more_tools_schema_has_required_categories_param():
     assert "categories" in params["properties"]
     assert params["properties"]["categories"]["type"] == "array"
     assert "categories" in params["required"]
+
+
+async def test_classify_scheduling_as_time():
+    """Scheduling messages should classify as 'time' category."""
+    client = _mock_ollama("time")
+    result = await classify_intent("recuerdame en 5 minutos", client)
+    assert result == ["time"]
+
+
+def test_cron_tools_in_time_category():
+    """Cron tools must be included in the 'time' category."""
+    time_tools = TOOL_CATEGORIES["time"]
+    assert "create_cron" in time_tools
+    assert "list_crons" in time_tools
+    assert "delete_cron" in time_tools
+
+
+def test_workers_have_search_tools():
+    """Reader and general workers should have search/fetch categories."""
+    from app.skills.router import WORKER_TOOL_SETS
+
+    assert "search" in WORKER_TOOL_SETS["reader"]
+    assert "fetch" in WORKER_TOOL_SETS["reader"]
+    assert "search" in WORKER_TOOL_SETS["general"]
+    assert "fetch" in WORKER_TOOL_SETS["general"]

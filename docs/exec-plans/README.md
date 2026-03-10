@@ -25,6 +25,7 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | Performance Optimization — Latencia del Critical Path | [`36-performance_optimization_prd.md`](36-performance_optimization_prd.md) / [`36-performance_optimization_prp.md`](36-performance_optimization_prp.md) | 📋 Pendiente |
 | Metrics Hardening — Token breakdown, latencias p95, semantic hit rate | [`38-metrics_hardening_prd.md`](38-metrics_hardening_prd.md) / [`38-metrics_hardening_prp.md`](38-metrics_hardening_prp.md) | ✅ Completado |
 | Agent Metrics & Efficacy — Tool efficiency, context quality, agent efficacy | [`39-agent_metrics_prd.md`](39-agent_metrics_prd.md) / [`39-agent_metrics_prp.md`](39-agent_metrics_prp.md) | 📋 Pendiente |
+| Testing Bugfix Sprint — 19 bugs de sesion real (search, agent, routing, datetime, MCP) | [`40-testing_bugfix_prd.md`](40-testing_bugfix_prd.md) / [`40-testing_bugfix_prp.md`](40-testing_bugfix_prp.md) | ✅ Completado |
 
 ## Convenciones
 

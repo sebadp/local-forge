@@ -43,6 +43,10 @@ _JSON_KEY_FIELDS: list[str] = [
     "default_branch",
     "login",  # user objects
     "body",  # issue/PR body (truncated)
+    "content",  # file content from get_file_contents
+    "path",  # file/dir path
+    "type",  # "file" or "dir"
+    "size",  # file size in bytes
 ]
 
 
@@ -82,7 +86,7 @@ def _try_json_extraction(text: str, max_length: int) -> str | None:
     return None
 
 
-def _pick_fields(item: dict) -> dict:
+def _pick_fields(item: dict, content_limit: int = 12000) -> dict:
     """Pick only key fields from a dict, flattening known nested objects."""
     compact: dict = {}
     for k in _JSON_KEY_FIELDS:
@@ -94,6 +98,8 @@ def _pick_fields(item: dict) -> dict:
             compact[k] = val["login"]
         elif isinstance(val, str) and k == "body" and len(val) > 300:
             compact[k] = val[:300] + "…"
+        elif isinstance(val, str) and k == "content" and len(val) > content_limit:
+            compact[k] = val[:content_limit] + "\n…[truncated]"
         else:
             compact[k] = val
     return compact

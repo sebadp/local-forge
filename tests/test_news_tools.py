@@ -2,9 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-pytest.importorskip(
-    "duckduckgo_search", reason="duckduckgo_search not installed in this environment"
-)
+pytest.importorskip("ddgs", reason="ddgs not installed in this environment")
 
 from app.skills.models import ToolCall
 from app.skills.registry import SkillRegistry
@@ -78,9 +76,7 @@ async def test_search_news_with_time_range():
         result = await reg.execute_tool(
             ToolCall(name="search_news", arguments={"query": "breaking", "time_range": "d"})
         )
-        MockDDGS.return_value.news.assert_called_once_with(
-            keywords="breaking", timelimit="d", max_results=5
-        )
+        MockDDGS.return_value.news.assert_called_once_with("breaking", timelimit="d", max_results=5)
 
     assert result.success
     assert "Fresh News" in result.content

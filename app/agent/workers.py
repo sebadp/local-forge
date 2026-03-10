@@ -10,7 +10,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from app.agent.models import TaskStep
+from app.agent.models import AgentPlan, TaskStep
 from app.models import ChatMessage
 from app.skills.executor import execute_tool_loop
 from app.skills.router import WORKER_TOOL_SETS, select_tools
@@ -24,14 +24,24 @@ logger = logging.getLogger(__name__)
 
 _WORKER_PROMPTS: dict[str, str] = {
     "reader": (
-        "You are an information gatherer. Your job is to read and summarize information.\n"
-        "Use the available tools to retrieve the requested data. Return a concise summary.\n"
+        "You are a thorough information gatherer. Your job is to research and summarize information.\n"
+        "RESEARCH METHODOLOGY:\n"
+        "1. Search with multiple queries using different keywords to find diverse sources.\n"
+        "2. When you find relevant search results, use puppeteer_navigate or fetch tools to READ "
+        "the full content of the most promising pages.\n"
+        "3. Do NOT stop after a single search — make at least 2-3 searches with varied terms.\n"
+        "4. Synthesize findings from multiple sources into a comprehensive summary.\n"
+        "5. Include specific names, dates, and facts — do not leave placeholders.\n"
         "Do NOT modify anything — only read and report."
     ),
     "analyzer": (
-        "You are a data analyst. Your job is to analyze data and find patterns.\n"
-        "Use the available tools to inspect traces, logs, and tool outputs.\n"
-        "Report anomalies, errors, and root causes."
+        "You are a senior technical analyst. Your job is to analyze data and find patterns.\n"
+        "METHODOLOGY:\n"
+        "1. Use the data from previous steps as your starting point.\n"
+        "2. Dive deeper into specific areas — read source files, check configurations, inspect CI/CD.\n"
+        "3. Compare against best practices and identify concrete issues.\n"
+        "4. Provide specific findings with file paths, line references, and evidence.\n"
+        "Do NOT give generic advice — base all findings on actual data you've read."
     ),
     "coder": (
         "You are a software engineer. Your job is to read, understand, and modify source code.\n"
@@ -45,8 +55,13 @@ _WORKER_PROMPTS: dict[str, str] = {
     ),
     "general": (
         "You are a capable assistant working on a specific sub-task.\n"
-        "Use the available tools to complete the task described below.\n"
-        "Be thorough but efficient."
+        "METHODOLOGY:\n"
+        "1. Use multiple tool calls to gather comprehensive data — do NOT stop after one call.\n"
+        "2. For GitHub repos: use get_file_contents to read the root directory listing first, "
+        "then read key files (README.md, pyproject.toml, requirements.txt, config files).\n"
+        "3. For web research: search with varied queries, then read promising pages.\n"
+        "4. Always provide a detailed summary of what you found with specific data points.\n"
+        "Do NOT generate sample code or templates — focus on reading and analyzing real data."
     ),
 }
 
@@ -106,6 +121,7 @@ async def execute_worker(
     max_tools: int = 8,
     hitl_callback: Callable[[str, dict, str], Awaitable[bool]] | None = None,
     parent_span_id: str | None = None,
+    plan: AgentPlan | None = None,
 ) -> str:
     """Execute a single TaskStep using the inner tool loop.
 
@@ -117,6 +133,24 @@ async def execute_worker(
         ChatMessage(role="system", content=worker_prompt),
         ChatMessage(role="user", content=task.description),
     ]
+
+    # Inject results from dependency tasks so workers can build on prior steps
+    if task.depends_on and plan:
+        dep_lines = []
+        for dep_id in task.depends_on:
+            dep_task = next((t for t in plan.tasks if t.id == dep_id), None)
+            if dep_task and dep_task.result:
+                dep_lines.append(
+                    f"--- Result from step #{dep_id} ({dep_task.description[:60]}) ---\n"
+                    f"{dep_task.result[:800]}"
+                )
+        if dep_lines:
+            messages.append(
+                ChatMessage(
+                    role="system",
+                    content="CONTEXT FROM PREVIOUS STEPS:\n" + "\n\n".join(dep_lines),
+                )
+            )
 
     # Determine categories for this worker type
     categories = WORKER_TOOL_SETS.get(task.worker_type, WORKER_TOOL_SETS.get("general", []))
@@ -132,8 +166,13 @@ async def execute_worker(
         parent_span_id=parent_span_id,
     )
 
+    # Detect empty results — workers that return nothing useful should signal failure
+    if not result or not result.strip():
+        logger.warning("Worker [%s] task #%s returned empty result", task.worker_type, task.id)
+        return "(no data found — all tool calls returned empty or failed)"
+
     logger.info(
-        "Worker [%s] task #%d completed: %s",
+        "Worker [%s] task #%s completed: %s",
         task.worker_type,
         task.id,
         result[:100],

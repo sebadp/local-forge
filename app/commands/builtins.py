@@ -70,6 +70,7 @@ async def cmd_agent(args: str, context: CommandContext) -> str:
             wa_client=context.wa_client,
             mcp_manager=context.mcp_manager,
             recorder=context.trace_recorder,
+            repository=context.repository,
         )
     )
     _bg_agent_tasks.add(task)
@@ -126,6 +127,7 @@ async def cmd_agent_resume(args: str, context: CommandContext) -> str:
             wa_client=context.wa_client,
             mcp_manager=context.mcp_manager,
             recorder=context.trace_recorder,
+            repository=context.repository,
         )
     )
 
@@ -628,6 +630,7 @@ async def cmd_dev_review(args: str, context: CommandContext) -> str:
             mcp_manager=context.mcp_manager,
             use_planner=True,
             recorder=context.trace_recorder,
+            repository=context.repository,
         )
     )
     _bg_agent_tasks.add(task)
@@ -664,6 +667,31 @@ async def cmd_debug(args: str, context: CommandContext) -> str:
         return "🪲 Auto Debug activado. A partir de ahora enviaré un log de mis ejecuciones para ayudarte a investigar."
     else:
         return "Auto Debug desactivado. He vuelto a mi modo normal."
+
+
+async def cmd_reset_metrics(args: str, context: CommandContext) -> str:
+    """Reset all metrics (traces, scores, eval dataset) without touching memories."""
+    counts = await context.repository.reset_metrics()
+    total = sum(counts.values())
+    if total == 0:
+        return "No hay métricas que borrar — todo ya está en cero."
+
+    lines = [f"Métricas reseteadas ({total} registros eliminados):"]
+    labels = {
+        "traces": "Trazas",
+        "trace_spans": "Spans",
+        "trace_scores": "Scores",
+        "eval_dataset": "Dataset eval",
+        "eval_dataset_tags": "Dataset tags",
+        "agent_command_log": "Agent command log",
+    }
+    for table, count in counts.items():
+        if count > 0:
+            label = labels.get(table, table)
+            lines.append(f"  - {label}: {count}")
+
+    lines.append("\nMemories, notas, conversaciones y proyectos no fueron afectados.")
+    return "\n".join(lines)
 
 
 def register_builtins(registry: CommandRegistry) -> None:
@@ -801,5 +829,13 @@ def register_builtins(registry: CommandRegistry) -> None:
             description="Analizar interacciones recientes de un usuario (planner-orchestrator)",
             usage="/dev-review [phone_number]",
             handler=cmd_dev_review,
+        )
+    )
+    registry.register(
+        CommandSpec(
+            name="reset-metrics",
+            description="Borrar trazas, scores y eval dataset (sin tocar memorias)",
+            usage="/reset-metrics",
+            handler=cmd_reset_metrics,
         )
     )

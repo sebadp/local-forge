@@ -31,10 +31,43 @@ def test_check_not_empty_fails_on_blank():
 
 
 def test_language_match_skip_short_text():
-    """Texts < 30 chars must always pass — langdetect is unreliable on short texts."""
+    """Short user text + short reply → skip (no detection at all)."""
     result = check_language_match("Hola", "Hello")
     assert result.passed is True
     assert "short" in result.details
+
+
+def test_language_match_short_user_with_default_catches_mismatch():
+    """Short user text but long reply: detect reply lang vs default_language."""
+    with patch("langdetect.detect", return_value="pt"):
+        result = check_language_match(
+            "en portuges?",
+            "Aqui está uma resposta muito longa em português para o utilizador",
+            default_language="es",
+        )
+    assert result.passed is False
+    assert result.details == "es"
+
+
+def test_language_match_short_user_with_default_passes_when_match():
+    """Short user text + reply in default language → pass."""
+    with patch("langdetect.detect", return_value="es"):
+        result = check_language_match(
+            "hola!",
+            "Hola, esta es una respuesta en español suficientemente larga",
+            default_language="es",
+        )
+    assert result.passed is True
+
+
+def test_language_match_short_user_no_default_skips():
+    """Short user text + no default_language → skip (backward compat)."""
+    result = check_language_match(
+        "ok",
+        "This is a long enough reply to be detected but no default language set",
+    )
+    assert result.passed is True
+    assert "no default" in result.details
 
 
 def test_language_match_skip_short_reply():

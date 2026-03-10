@@ -98,6 +98,19 @@ async def test_get_note_not_found(repository):
     assert "not found" in result.content
 
 
+async def test_save_note_ignores_extra_kwargs(repository):
+    """save_note tolerates extra kwargs (e.g. LLM hallucinating 'tags')."""
+    reg = await _make_registry(repository)
+    result = await reg.execute_tool(
+        ToolCall(
+            name="save_note",
+            arguments={"title": "Test", "content": "Body", "tags": ["research"]},
+        )
+    )
+    assert result.success
+    assert "Test" in result.content
+
+
 async def test_list_notes_truncates_but_get_note_shows_full(repository):
     """list_notes truncates at 80 chars; get_note returns the full content."""
     reg = await _make_registry(repository)

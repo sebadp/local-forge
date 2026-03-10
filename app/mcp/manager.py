@@ -428,7 +428,15 @@ class McpManager:
             )
         try:
             result = await tool.handler(**tool_call.arguments)
-            return ToolResult(tool_name=tool_call.name, content=result)
+            # _make_handler catches exceptions and returns "Error: ..." strings.
+            # Detect these so the executor's fallback logic (e.g. Puppeteer → mcp-fetch)
+            # can trigger on result.success == False.
+            is_error = isinstance(result, str) and result.startswith("Error:")
+            return ToolResult(
+                tool_name=tool_call.name,
+                content=result,
+                success=not is_error,
+            )
         except Exception as e:
             logger.exception("MCP tool %s execution failed", tool_call.name)
             return ToolResult(

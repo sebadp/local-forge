@@ -212,6 +212,28 @@ async def test_execute_tool_handler_error():
     assert "boom" in result.content
 
 
+async def test_execute_tool_error_string_sets_success_false():
+    """Handler returning 'Error: ...' string should set success=False."""
+    mgr = McpManager(config_path="/nonexistent")
+
+    from app.skills.models import ToolDefinition
+
+    async def error_handler(**kwargs):
+        return "Error: Failed to launch the browser process!"
+
+    mgr._tools["puppeteer_navigate"] = ToolDefinition(
+        name="puppeteer_navigate",
+        description="Navigate",
+        parameters={"type": "object", "properties": {}},
+        handler=error_handler,
+        skill_name="mcp::puppeteer",
+    )
+
+    result = await mgr.execute_tool(ToolCall(name="puppeteer_navigate", arguments={}))
+    assert not result.success
+    assert "Failed to launch" in result.content
+
+
 async def test_get_ollama_tools_format():
     """get_ollama_tools returns correct Ollama format."""
     mgr = McpManager(config_path="/nonexistent")

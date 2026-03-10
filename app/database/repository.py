@@ -1339,6 +1339,31 @@ class Repository:
         await self._conn.commit()
         return cursor.rowcount
 
+    async def reset_metrics(self) -> dict[str, int]:
+        """Delete all metrics data: traces, spans, scores, eval dataset, agent command log.
+
+        Preserves: memories, notes, conversations, projects, prompts, cron jobs.
+        Returns counts of deleted rows per table.
+        """
+        counts: dict[str, int] = {}
+
+        for table in (
+            "trace_scores",
+            "trace_spans",
+            "traces",
+            "eval_dataset_tags",
+            "eval_dataset",
+            "agent_command_log",
+        ):
+            try:
+                cursor = await self._conn.execute(f"DELETE FROM {table}")  # noqa: S608
+                counts[table] = cursor.rowcount
+            except Exception:
+                counts[table] = 0
+
+        await self._conn.commit()
+        return counts
+
     async def get_failure_trend(self, days: int = 30) -> list[dict]:
         """Return daily trace counts and failure counts for the last N days."""
         cursor = await self._conn.execute(
@@ -1609,10 +1634,15 @@ class Repository:
             return results
 
     async def get_e2e_latency_percentiles(self, days: int = 7) -> list[dict]:
-        """Return p50/p95/p99 of end-to-end message processing time from the traces table."""
+        """Return p50/p95/p99 of end-to-end message processing time from the traces table.
+
+        Returns a list with the overall percentiles first, followed by per-message_type
+        breakdowns (e.g. text, audio, image, agent) so the caller can display them separately.
+        """
         cursor = await self._conn.execute(
             """
             SELECT
+                message_type,
                 CAST(
                     (julianday(completed_at) - julianday(started_at)) * 86400000
                 AS REAL) AS latency_ms
@@ -1625,10 +1655,22 @@ class Repository:
             (f"-{days}",),
         )
         rows = await cursor.fetchall()
-        values = [r[0] for r in rows if r[0] is not None and r[0] > 0]
-        if not values:
+        all_values = [r[1] for r in rows if r[1] is not None and r[1] > 0]
+        if not all_values:
             return []
-        return [_compute_percentiles("end_to_end", values)]
+
+        result = [_compute_percentiles("end_to_end", sorted(all_values))]
+
+        # Per-type breakdowns
+        by_type: dict[str, list[float]] = {}
+        for r in rows:
+            if r[1] is not None and r[1] > 0:
+                by_type.setdefault(r[0] or "text", []).append(r[1])
+        for msg_type in sorted(by_type):
+            vals = sorted(by_type[msg_type])
+            result.append(_compute_percentiles(f"e2e:{msg_type}", vals))
+
+        return result
 
     async def get_search_hit_rate(self, days: int = 7) -> list[dict]:
         """Return distribution of semantic search modes from span metadata.
@@ -1692,7 +1734,7 @@ class Repository:
             "avg_tool_calls": round(row[0] or 0, 2),
             "max_tool_calls": row[1] or 0,
             "no_tool_traces": row[2] or 0,
-            "total_traces":   row[3] or 0,
+            "total_traces": row[3] or 0,
         }
 
         cursor = await self._conn.execute(
@@ -1730,9 +1772,9 @@ class Repository:
         rows = await cursor.fetchall()
         stats["tool_error_rates"] = [
             {
-                "tool":       r[0],
-                "total":      r[1],
-                "errors":     r[2],
+                "tool": r[0],
+                "total": r[1],
+                "errors": r[2],
                 "error_rate": round(r[2] / r[1], 3) if r[1] else 0.0,
             }
             for r in rows
@@ -1744,15 +1786,15 @@ class Repository:
         cursor = await self._conn.execute(
             """
             SELECT
-                AVG(json_extract(metadata, '$.gen_ai.usage.input_tokens'))  AS avg_input,
-                AVG(json_extract(metadata, '$.gen_ai.usage.output_tokens')) AS avg_output,
-                SUM(json_extract(metadata, '$.gen_ai.usage.input_tokens'))  AS total_input,
-                SUM(json_extract(metadata, '$.gen_ai.usage.output_tokens')) AS total_output,
+                AVG(json_extract(metadata, '$."gen_ai.usage.input_tokens"'))  AS avg_input,
+                AVG(json_extract(metadata, '$."gen_ai.usage.output_tokens"')) AS avg_output,
+                SUM(json_extract(metadata, '$."gen_ai.usage.input_tokens"'))  AS total_input,
+                SUM(json_extract(metadata, '$."gen_ai.usage.output_tokens"')) AS total_output,
                 COUNT(*) AS n
             FROM trace_spans
             WHERE kind = 'generation'
               AND started_at >= datetime('now', ? || ' days')
-              AND json_extract(metadata, '$.gen_ai.usage.input_tokens') IS NOT NULL
+              AND json_extract(metadata, '$."gen_ai.usage.input_tokens"') IS NOT NULL
             """,
             (f"-{days}",),
         )
@@ -1760,11 +1802,11 @@ class Repository:
         if not row or not row[4]:
             return {}
         return {
-            "avg_input_tokens":   round(row[0] or 0, 1),
-            "avg_output_tokens":  round(row[1] or 0, 1),
+            "avg_input_tokens": round(row[0] or 0, 1),
+            "avg_output_tokens": round(row[1] or 0, 1),
             "total_input_tokens": int(row[2] or 0),
             "total_output_tokens": int(row[3] or 0),
-            "n_generations":      row[4],
+            "n_generations": row[4],
         }
 
     async def get_tool_redundancy(self, days: int = 7) -> list[dict]:
@@ -1783,10 +1825,7 @@ class Repository:
             (f"-{days}",),
         )
         rows = await cursor.fetchall()
-        return [
-            {"trace_id": r[0][:12], "tool": r[1], "repeated_calls": r[2]}
-            for r in rows
-        ]
+        return [{"trace_id": r[0][:12], "tool": r[1], "repeated_calls": r[2]} for r in rows]
 
     async def get_context_quality_metrics(self, days: int = 7) -> dict:
         """Return context quality aggregates: fill rate, classify upgrade rate, memory relevance."""
@@ -1805,10 +1844,10 @@ class Repository:
         )
         row = await cursor.fetchone()
         result: dict = {
-            "avg_fill_rate":    round((row[0] or 0) * 100, 1),
-            "max_fill_rate":    round((row[1] or 0) * 100, 1),
+            "avg_fill_rate": round((row[0] or 0) * 100, 1),
+            "max_fill_rate": round((row[1] or 0) * 100, 1),
             "near_limit_count": row[2] or 0,
-            "fill_n":           row[3] or 0,
+            "fill_n": row[3] or 0,
         }
 
         cursor = await self._conn.execute(
@@ -1826,9 +1865,9 @@ class Repository:
         )
         row = await cursor.fetchone()
         upgraded = row[0] or 0
-        total    = max(row[1] or 1, 1)
+        total = max(row[1] or 1, 1)
         result["classify_upgrade_rate"] = round(upgraded / total * 100, 1)
-        result["classify_upgraded_n"]   = upgraded
+        result["classify_upgraded_n"] = upgraded
 
         cursor = await self._conn.execute(
             """
@@ -1845,8 +1884,8 @@ class Repository:
         )
         row = await cursor.fetchone()
         result["avg_memories_retrieved"] = round(row[0] or 0, 1)
-        result["avg_memories_passed"]    = round(row[1] or 0, 1)
-        result["avg_memories_returned"]  = round(row[2] or 0, 1)
+        result["avg_memories_passed"] = round(row[1] or 0, 1)
+        result["avg_memories_returned"] = round(row[2] or 0, 1)
         result["memory_relevance_pct"] = (
             round((row[1] or 0) / (row[0] or 1) * 100, 1) if (row[0] or 0) > 0 else None
         )
@@ -1887,10 +1926,10 @@ class Repository:
         rows = await cursor.fetchall()
         return [
             {
-                "bucket":             r[0],
+                "bucket": r[0],
                 "avg_guardrail_pass": round((r[1] or 0) * 100, 1),
-                "avg_fill_rate_pct":  round((r[2] or 0) * 100, 1),
-                "n":                  r[3],
+                "avg_fill_rate_pct": round((r[2] or 0) * 100, 1),
+                "n": r[3],
             }
             for r in rows
         ]
@@ -1937,9 +1976,9 @@ class Repository:
         )
         row = await cursor.fetchone()
         return {
-            "total_planner_sessions":  total,
-            "replanned_sessions":      replanned,
-            "replanning_rate_pct":     round(replanned / total * 100, 1),
+            "total_planner_sessions": total,
+            "replanned_sessions": replanned,
+            "replanning_rate_pct": round(replanned / total * 100, 1),
             "avg_replans_per_session": round(row[0] or 0, 2),
         }
 
@@ -1960,8 +1999,8 @@ class Repository:
         row = await cursor.fetchone()
         return {
             "total_escalations": row[0] or 0,
-            "approved":          row[1] or 0,
-            "rejected":          row[2] or 0,
+            "approved": row[1] or 0,
+            "rejected": row[2] or 0,
         }
 
     async def get_goal_completion_rate(self, days: int = 7) -> dict:

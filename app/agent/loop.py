@@ -423,7 +423,7 @@ async def _run_planner_session(
             task.status = "in_progress"
             session.task_plan = plan.to_markdown()
             logger.info(
-                "Agent session %s: executing task #%d [%s]: %s",
+                "Agent session %s: executing task #%s [%s]: %s",
                 session.session_id,
                 task.id,
                 task.worker_type,
@@ -449,12 +449,16 @@ async def _run_planner_session(
                             max_tools=_TOOLS_PER_ROUND,
                             hitl_callback=hitl_callback,
                             parent_span_id=worker_span.span_id,
+                            plan=plan,
                         )
-                        task.status = "done"
                         task.result = result
+                        if "(no data found" in result:
+                            task.status = "failed"
+                        else:
+                            task.status = "done"
                         worker_span.set_output({"result": result[:500], "status": task.status})
                     except Exception as e:
-                        logger.exception("Worker task #%d failed", task.id)
+                        logger.exception("Worker task #%s failed", task.id)
                         task.status = "failed"
                         task.result = f"Error: {e}"
                         worker_span._status = "failed"
@@ -469,11 +473,15 @@ async def _run_planner_session(
                         mcp_manager=mcp_manager,
                         max_tools=_TOOLS_PER_ROUND,
                         hitl_callback=hitl_callback,
+                        plan=plan,
                     )
-                    task.status = "done"
                     task.result = result
+                    if "(no data found" in result:
+                        task.status = "failed"
+                    else:
+                        task.status = "done"
                 except Exception as e:
-                    logger.exception("Worker task #%d failed", task.id)
+                    logger.exception("Worker task #%s failed", task.id)
                     task.status = "failed"
                     task.result = f"Error: {e}"
 
@@ -494,10 +502,11 @@ async def _run_planner_session(
 
             # Progress update
             done_count = sum(1 for t in plan.tasks if t.status == "done")
+            status_icon = "✅" if task.status == "done" else "❌"
             try:
                 await wa_client.send_message(
                     session.phone_number,
-                    f"🔧 Task #{task.id} done ({done_count}/{len(plan.tasks)})",
+                    f"{status_icon} Task #{task.id} {'done' if task.status == 'done' else 'failed'} ({done_count}/{len(plan.tasks)})",
                 )
             except Exception:
                 pass
@@ -505,8 +514,20 @@ async def _run_planner_session(
             task = plan.next_task()
 
         # All tasks executed (or failed) — check if we should replan
-        if plan.all_done():
-            break
+        if plan.all_done() and not plan.has_failures():
+            break  # All tasks succeeded, no need to replan
+
+        if not plan.all_done():
+            # Some tasks still pending (shouldn't normally happen), continue
+            continue
+
+        # Tasks finished but some failed — fall through to replan
+        logger.info(
+            "Agent session %s: %d/%d tasks failed, attempting replan",
+            session.session_id,
+            sum(1 for t in plan.tasks if t.status == "failed"),
+            len(plan.tasks),
+        )
 
         # --- Phase 3: SYNTHESIZE / REPLAN ---
         logger.info(
@@ -697,6 +718,7 @@ async def run_agent_session(
     mcp_manager: McpManager | None = None,
     use_planner: bool = True,
     recorder=None,
+    repository=None,
 ) -> None:
     """Run a full agentic session in the background.
 
@@ -735,6 +757,7 @@ async def run_agent_session(
                 wa_client=wa_client,
                 mcp_manager=mcp_manager,
                 use_planner=use_planner,
+                repository=repository,
             )
     else:
         await _run_agent_body(
@@ -744,6 +767,7 @@ async def run_agent_session(
             wa_client=wa_client,
             mcp_manager=mcp_manager,
             use_planner=use_planner,
+            repository=repository,
         )
 
 
@@ -762,10 +786,10 @@ async def _score_goal_completion(
             "Reply ONLY 'yes' or 'no'."
         )
         response = await ollama_client.chat(
-            messages=[{"role": "user", "content": prompt}],
+            messages=[ChatMessage(role="user", content=prompt)],
             think=False,
         )
-        verdict = (response.content or "").strip().lower()
+        verdict = (response or "").strip().lower()
         score = 1.0 if verdict.startswith("yes") else 0.0
         await trace_ctx.add_score(
             name="goal_completion",
@@ -777,6 +801,32 @@ async def _score_goal_completion(
         logger.debug("goal_completion scoring failed (best-effort)", exc_info=True)
 
 
+async def _save_task_results_note(session: AgentSession, repository: object) -> None:
+    """Save combined worker results as a note for later retrieval."""
+    plan = session.plan
+    if not plan or not plan.tasks:
+        return
+
+    done_tasks = [t for t in plan.tasks if t.status == "done" and t.result]
+    if not done_tasks:
+        return
+
+    sections = []
+    for t in done_tasks:
+        sections.append(f"## Task #{t.id}: {t.description}\n\n{t.result}")
+
+    content = "\n\n---\n\n".join(sections)
+    # Cap at reasonable size for a note
+    if len(content) > 8000:
+        content = content[:8000] + "\n\n...(truncated)"
+
+    title = f"[Agent] {plan.objective[:80]}"
+    await repository.save_note(title, content)  # type: ignore[attr-defined]
+    logger.info(
+        "Saved agent results as note: %s (%d tasks, %d chars)", title, len(done_tasks), len(content)
+    )
+
+
 async def _run_agent_body(
     session: AgentSession,
     ollama_client: OllamaClient,
@@ -784,6 +834,7 @@ async def _run_agent_body(
     wa_client: WhatsAppClient,
     mcp_manager: McpManager | None,
     use_planner: bool,
+    repository=None,
 ) -> None:
     """Inner implementation of run_agent_session. Run inside a TraceContext if tracing enabled."""
     try:
@@ -801,6 +852,14 @@ async def _run_agent_body(
                     mcp_manager=mcp_manager,
                     hitl_callback=hitl_callback,
                 )
+                # Auto-save detailed worker results as a note so the user
+                # can reference them later (the synthesis is a short summary;
+                # the full data lives only in the JSONL otherwise).
+                if repository is not None and session.plan:
+                    try:
+                        await _save_task_results_note(session, repository)
+                    except Exception:
+                        logger.debug("Could not save agent results note", exc_info=True)
             except Exception:
                 logger.exception("Planner session failed, falling back to reactive loop")
                 # Fallback to reactive loop
@@ -867,6 +926,14 @@ async def _run_agent_body(
             session.phone_number,
             markdown_to_whatsapp(f"✅ *Sesión agéntica completada*\n\n{final_message}"),
         )
+
+        # Bridge agent result into conversation history so the user can reference it later
+        if repository is not None:
+            try:
+                conv_id = await repository.get_or_create_conversation(session.phone_number)
+                await repository.save_message(conv_id, "assistant", reply[:4000])
+            except Exception:
+                logger.debug("Could not bridge agent result to conversation history")
 
         # Goal completion scoring — LLM-as-judge, run before TraceContext exits so the
         # score is written while the trace is still active. Guard against CancelledError

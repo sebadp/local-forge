@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# --no-sandbox is safe inside a Docker container (the container IS the sandbox)
+# PUPPETEER_LAUNCH_OPTIONS is read by @modelcontextprotocol/server-puppeteer
+ENV PUPPETEER_LAUNCH_OPTIONS='{"headless":true,"args":["--no-sandbox","--disable-setuid-sandbox"]}'
+# ALLOW_DANGEROUS lets server-puppeteer accept --no-sandbox without throwing
+ENV ALLOW_DANGEROUS=true
 
 WORKDIR /app
 
@@ -25,6 +30,13 @@ RUN pip install --no-cache-dir --no-build-isolation .
 
 COPY app/ app/
 COPY skills/ skills/
+
+# Pre-install MCP server packages to avoid npx cold-start timeouts
+RUN npm install -g @modelcontextprotocol/server-puppeteer \
+    @modelcontextprotocol/server-filesystem \
+    @modelcontextprotocol/server-github \
+    @modelcontextprotocol/server-memory \
+    mcp-fetch-server
 
 ARG UID=1000
 ARG GID=1000
