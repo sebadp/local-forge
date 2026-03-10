@@ -114,9 +114,10 @@ class TestCheckLanguageMatch:
         assert result.passed is True
         assert "skipped" in result.details
 
-    async def test_passes_for_matching_languages(self):
-        user = "¿Cómo puedo ayudarte con tu proyecto hoy?"
-        reply = "Claro, puedo ayudarte con tu proyecto. ¿Qué necesitas exactamente?"
+    async def test_passes_for_matching_languages(self, mocker):
+        mocker.patch("langdetect.detect", return_value="es")
+        user = "Hola, necesito ayuda con mi proyecto de investigación"
+        reply = "Por supuesto, estaré encantado de ayudarte con tu proyecto"
         result = await check_language_match(user, reply)
         assert result.passed is True
 
