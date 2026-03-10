@@ -92,10 +92,13 @@ async def backfill_embeddings(
     count = 0
     for i in range(0, len(unembedded), BATCH_SIZE):
         batch = unembedded[i : i + BATCH_SIZE]
-        texts = [content for _, content in batch]
+        valid = [(mem_id, content) for mem_id, content in batch if content]
+        if not valid:
+            continue
+        ids, texts = zip(*valid, strict=False)
         try:
-            embeddings = await ollama_client.embed(texts, model=model)
-            for (mem_id, _), emb in zip(batch, embeddings, strict=False):
+            embeddings = await ollama_client.embed(list(texts), model=model)
+            for mem_id, emb in zip(ids, embeddings, strict=False):
                 await repository.save_embedding(mem_id, emb, auto_commit=False)
                 count += 1
             # Single commit per batch instead of per-row
@@ -123,10 +126,17 @@ async def backfill_note_embeddings(
     count = 0
     for i in range(0, len(unembedded), BATCH_SIZE):
         batch = unembedded[i : i + BATCH_SIZE]
-        texts = [f"{title}: {content}" for _, title, content in batch]
+        valid = [
+            (note_id, f"{title}: {content}")
+            for note_id, title, content in batch
+            if title or content
+        ]
+        if not valid:
+            continue
+        ids, texts = zip(*valid, strict=False)
         try:
-            embeddings = await ollama_client.embed(texts, model=model)
-            for (note_id, _, _), emb in zip(batch, embeddings, strict=False):
+            embeddings = await ollama_client.embed(list(texts), model=model)
+            for note_id, emb in zip(ids, embeddings, strict=False):
                 await repository.save_note_embedding(note_id, emb, auto_commit=False)
                 count += 1
             # Single commit per batch instead of per-row
