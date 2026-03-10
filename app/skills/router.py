@@ -12,6 +12,10 @@ from app.tracing.context import get_current_trace
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled URL regex used in classify_intent hot path
+_RE_URL = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
+
+
 # Maps category names to tool names that belong to that category.
 # Builtin tools use their exact registered names.
 # MCP tools use the names exposed by the MCP server.
@@ -207,8 +211,7 @@ async def classify_intent(
 
     # Fast-path for URLs: if the message contains a URL, ensure 'fetch' is an option
     # so the agent has the web browsing tools available.
-    url_pattern = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
-    has_url = bool(url_pattern.search(user_message))
+    has_url = bool(_RE_URL.search(user_message))
 
     # Build recent context block (last 3 turns = up to 6 messages)
     recent_context = ""

@@ -32,25 +32,27 @@ class Repository:
     def __init__(self, conn: aiosqlite.Connection):
         self._conn = conn
 
+    async def commit(self) -> None:
+        """Explicit commit for batch operations."""
+        await self._conn.commit()
+
     async def get_or_create_conversation(self, phone_number: str) -> int:
+        # Atomic upsert: INSERT OR IGNORE + UPDATE + SELECT in single commit
+        await self._conn.execute(
+            "INSERT OR IGNORE INTO conversations (phone_number) VALUES (?)",
+            (phone_number,),
+        )
+        await self._conn.execute(
+            "UPDATE conversations SET updated_at = datetime('now') WHERE phone_number = ?",
+            (phone_number,),
+        )
         cursor = await self._conn.execute(
             "SELECT id FROM conversations WHERE phone_number = ?",
             (phone_number,),
         )
         row = await cursor.fetchone()
-        if row:
-            await self._conn.execute(
-                "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?",
-                (row[0],),
-            )
-            await self._conn.commit()
-            return row[0]
-        cursor = await self._conn.execute(
-            "INSERT INTO conversations (phone_number) VALUES (?)",
-            (phone_number,),
-        )
         await self._conn.commit()
-        return cursor.lastrowid  # type: ignore[return-value]
+        return row[0]  # type: ignore[index]
 
     async def get_conversation_id(self, phone_number: str) -> int | None:
         cursor = await self._conn.execute(
@@ -319,13 +321,16 @@ class Repository:
     def _serialize_vector(vec: list[float]) -> bytes:
         return struct.pack(f"{len(vec)}f", *vec)
 
-    async def save_embedding(self, memory_id: int, embedding: list[float]) -> None:
+    async def save_embedding(
+        self, memory_id: int, embedding: list[float], *, auto_commit: bool = True
+    ) -> None:
         blob = self._serialize_vector(embedding)
         await self._conn.execute(
             "INSERT OR REPLACE INTO vec_memories (memory_id, embedding) VALUES (?, ?)",
             (memory_id, blob),
         )
-        await self._conn.commit()
+        if auto_commit:
+            await self._conn.commit()
 
     async def delete_embedding(self, memory_id: int) -> None:
         await self._conn.execute(
@@ -392,13 +397,16 @@ class Repository:
 
     # --- Note Embeddings ---
 
-    async def save_note_embedding(self, note_id: int, embedding: list[float]) -> None:
+    async def save_note_embedding(
+        self, note_id: int, embedding: list[float], *, auto_commit: bool = True
+    ) -> None:
         blob = self._serialize_vector(embedding)
         await self._conn.execute(
             "INSERT OR REPLACE INTO vec_notes (note_id, embedding) VALUES (?, ?)",
             (note_id, blob),
         )
-        await self._conn.commit()
+        if auto_commit:
+            await self._conn.commit()
 
     async def delete_note_embedding(self, note_id: int) -> None:
         await self._conn.execute(
@@ -730,6 +738,34 @@ class Repository:
         done = counts.get("done", 0)
         total = sum(counts.values())
         return {"pending": pending, "in_progress": in_progress, "done": done, "total": total}
+
+    async def get_projects_with_progress(
+        self, phone_number: str, status: str = "active", limit: int = 5
+    ) -> list[dict]:
+        """Get projects with task progress in a single JOIN query (eliminates N+1)."""
+        cursor = await self._conn.execute(
+            "SELECT p.id, p.name, p.status, "
+            "COUNT(pt.id) as total_tasks, "
+            "COUNT(CASE WHEN pt.status = 'done' THEN 1 END) as done_tasks "
+            "FROM projects p "
+            "LEFT JOIN project_tasks pt ON pt.project_id = p.id "
+            "WHERE p.phone_number = ? AND p.status = ? "
+            "GROUP BY p.id "
+            "ORDER BY p.updated_at DESC "
+            "LIMIT ?",
+            (phone_number, status, limit),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "name": r[1],
+                "status": r[2],
+                "total_tasks": r[3],
+                "done_tasks": r[4],
+            }
+            for r in rows
+        ]
 
     # --- Project Activity ---
 

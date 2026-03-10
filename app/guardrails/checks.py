@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 
@@ -40,7 +41,7 @@ def check_not_empty(reply: str) -> GuardrailResult:
     )
 
 
-def check_language_match(
+async def check_language_match(
     user_text: str, reply: str, default_language: str | None = None
 ) -> GuardrailResult:
     """Check that reply is in the same language as user_text.
@@ -48,6 +49,8 @@ def check_language_match(
     When user_text < 30 chars (too short for reliable detection), falls back to
     ``default_language`` if provided — detects reply language and compares against it.
     Skips if user_text has no whitespace (URL, UUID, code) — not natural language.
+
+    langdetect is CPU-bound — runs in a thread to avoid blocking the event loop.
     """
     start = time.monotonic()
     stripped_user = user_text.strip()
@@ -75,7 +78,7 @@ def check_language_match(
         try:
             from langdetect import detect
 
-            reply_lang = detect(reply)
+            reply_lang = await asyncio.to_thread(detect, reply)
             passed = reply_lang == default_language
             latency_ms = (time.monotonic() - start) * 1000
             return GuardrailResult(
@@ -107,8 +110,10 @@ def check_language_match(
     try:
         from langdetect import detect
 
-        user_lang = detect(user_text)
-        reply_lang = detect(reply)
+        user_lang, reply_lang = await asyncio.gather(
+            asyncio.to_thread(detect, user_text),
+            asyncio.to_thread(detect, reply),
+        )
         passed = user_lang == reply_lang
         latency_ms = (time.monotonic() - start) * 1000
         return GuardrailResult(

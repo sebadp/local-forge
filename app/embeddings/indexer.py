@@ -96,8 +96,10 @@ async def backfill_embeddings(
         try:
             embeddings = await ollama_client.embed(texts, model=model)
             for (mem_id, _), emb in zip(batch, embeddings, strict=False):
-                await repository.save_embedding(mem_id, emb)
+                await repository.save_embedding(mem_id, emb, auto_commit=False)
                 count += 1
+            # Single commit per batch instead of per-row
+            await repository.commit()
         except Exception:
             logger.warning(
                 "Failed to backfill memory batch %d-%d", i, i + len(batch), exc_info=True
@@ -125,8 +127,10 @@ async def backfill_note_embeddings(
         try:
             embeddings = await ollama_client.embed(texts, model=model)
             for (note_id, _, _), emb in zip(batch, embeddings, strict=False):
-                await repository.save_note_embedding(note_id, emb)
+                await repository.save_note_embedding(note_id, emb, auto_commit=False)
                 count += 1
+            # Single commit per batch instead of per-row
+            await repository.commit()
         except Exception:
             logger.warning("Failed to backfill note batch %d-%d", i, i + len(batch), exc_info=True)
 

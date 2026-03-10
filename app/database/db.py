@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS summaries (
     message_count   INTEGER NOT NULL,
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_summaries_conversation ON summaries(conversation_id, id);
 
 CREATE TABLE IF NOT EXISTS memories (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS memories (
     active     INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(active, id);
 
 CREATE TABLE IF NOT EXISTS notes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,6 +295,8 @@ async def init_db(db_path: str, embedding_dims: int = 768) -> tuple[aiosqlite.Co
     await conn.execute("PRAGMA synchronous=NORMAL")  # Faster, safe with WAL
     await conn.execute("PRAGMA cache_size=-32000")  # 32MB page cache in memory
     await conn.execute("PRAGMA temp_store=MEMORY")  # Temp tables in RAM
+    await conn.execute("PRAGMA mmap_size=30000000")  # 30MB mmap for faster reads
+    await conn.execute("PRAGMA busy_timeout=5000")  # 5s wait on lock contention
     await conn.execute("PRAGMA foreign_keys=ON")
     await conn.executescript(SCHEMA)
     await conn.executescript(TRACING_SCHEMA)

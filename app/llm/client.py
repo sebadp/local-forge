@@ -10,6 +10,9 @@ from app.models import ChatMessage
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled regex for stripping reasoning blocks (used on every LLM response)
+_RE_THINK = re.compile(r"<think>.*?</think>\n*", re.DOTALL)
+
 
 @dataclass
 class ChatResponse:
@@ -93,7 +96,7 @@ class OllamaClient:
         if content:
             logger.debug("LLM raw response: %s", content[:500])
             # Strip deepseek/qwen reasoning blocks: <think>...</think>
-            content = re.sub(r"<think>.*?</think>\n*", "", content, flags=re.DOTALL)
+            content = _RE_THINK.sub("", content)
             # Edge-cases if the LLM gets truncated exactly after opening or closing tags
             content = content.split("</think>")[-1]
             content = content.split("<think>")[0].strip()

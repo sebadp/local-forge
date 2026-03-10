@@ -254,28 +254,6 @@ async def lifespan(app: FastAPI):
             )
     app.state.memory_watcher = memory_watcher
 
-    # Backfill embeddings at startup
-    if vec_available and settings.semantic_search_enabled:
-        from app.embeddings.indexer import backfill_embeddings, backfill_note_embeddings
-
-        try:
-            await backfill_embeddings(
-                repository,
-                app.state.ollama_client,
-                settings.embedding_model,
-            )
-            await backfill_note_embeddings(
-                repository,
-                app.state.ollama_client,
-                settings.embedding_model,
-            )
-        except Exception:
-            import logging
-
-            logging.getLogger(__name__).warning(
-                "Embedding backfill failed at startup", exc_info=True
-            )
-
     # Warmup: pre-load Ollama models to avoid cold-start on first message
     try:
         await asyncio.gather(
@@ -288,6 +266,30 @@ async def lifespan(app: FastAPI):
         logger.info("Ollama models warmed up")
     except Exception:
         logger.warning("Model warmup failed (non-critical)", exc_info=True)
+
+    # Backfill embeddings as background task — doesn't block request acceptance
+    _backfill_task = None
+    if vec_available and settings.semantic_search_enabled:
+
+        async def _safe_backfill() -> None:
+            from app.embeddings.indexer import backfill_embeddings, backfill_note_embeddings
+
+            try:
+                await backfill_embeddings(
+                    repository,
+                    app.state.ollama_client,
+                    settings.embedding_model,
+                )
+                await backfill_note_embeddings(
+                    repository,
+                    app.state.ollama_client,
+                    settings.embedding_model,
+                )
+                logger.info("Embedding backfill completed (background)")
+            except Exception:
+                logger.warning("Embedding backfill failed (non-critical)", exc_info=True)
+
+        _backfill_task = asyncio.create_task(_safe_backfill())
 
     yield
 

@@ -163,17 +163,18 @@ class ConversationContext:
 
         async def _get_projects_summary() -> str | None:
             try:
-                projects = await repository.list_projects(phone_number, status="active")
+                # Single JOIN query eliminates N+1 (was 1 + N queries)
+                projects = await repository.get_projects_with_progress(
+                    phone_number, status="active", limit=5
+                )
                 if not projects:
                     return None
-                capped = projects[:5]
                 lines = ["Active projects:"]
-                for p in capped:
-                    progress = await repository.get_project_progress(p.id)
-                    total = progress["total"]
-                    done = progress["done"]
+                for p in projects:
+                    total = p["total_tasks"]
+                    done = p["done_tasks"]
                     pct = int(done / total * 100) if total > 0 else 0
-                    lines.append(f"  - {p.name}: {done}/{total} tasks ({pct}%)")
+                    lines.append(f"  - {p['name']}: {done}/{total} tasks ({pct}%)")
                 return "\n".join(lines)
             except Exception:
                 logger.warning(

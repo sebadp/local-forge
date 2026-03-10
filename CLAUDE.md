@@ -139,10 +139,17 @@ El procesamiento de cada mensaje está paralelizado en fases:
 - Tool calls en paralelo dentro de una iteración: `asyncio.gather(*[_run_tool_call(...)])` .
 - WA calls iniciales (mark_as_read + send_reaction) paralelizadas con `asyncio.gather`.
 - Blocking I/O en `daily_log.py` y `markdown.py` → `asyncio.to_thread()` (stdlib Python 3.9+).
-- Cache de conv_id en `ConversationManager._conv_id_cache` (dict phone→id, permanente durante runtime).
+- Cache de conv_id en `ConversationManager._conv_id_cache` — `OrderedDict` con LRU eviction (max 10K entries, `move_to_end` en hit, `popitem(last=False)` en eviction).
 - `get_active_memories(limit=...)` — fallback con límite (`settings.semantic_search_top_k`).
-- SQLite PRAGMA tuning en `db.py`: `synchronous=NORMAL`, `cache_size=-32000` (32MB), `temp_store=MEMORY`.
-- Model warmup en `main.py` startup: `embed(["warmup"]) ‖ chat_with_tools([...])` — non-critical, wrapped en try/except.
+- SQLite PRAGMA tuning en `db.py`: `synchronous=NORMAL`, `cache_size=-32000` (32MB), `temp_store=MEMORY`, `mmap_size=30000000` (30MB), `busy_timeout=5000` (5s lock wait).
+- SQLite indexes: `idx_summaries_conversation(conversation_id, id)`, `idx_memories_active(active, id)` — creados con `CREATE INDEX IF NOT EXISTS` en schema.
+- Model warmup en `main.py` startup (antes del yield); embedding backfill como `asyncio.create_task()` background task (no bloquea startup).
+- Pre-compiled regexes en hot paths: `_RE_THINK` en `client.py`, `_RE_URL` en `router.py`, 8 regexes en `whatsapp.py` — todos module-level.
+- `check_language_match` es **async** — wrappea `langdetect.detect()` en `asyncio.to_thread()` con `asyncio.gather()` para ambas detecciones. Llamado via `_run_async_check()` en pipeline (timeout 5.0s).
+- `get_projects_with_progress()` en Repository — query JOIN + GROUP BY elimina N+1 de project progress. Usado por `_get_projects_summary()` en context builder.
+- `get_or_create_conversation()` atómico: `INSERT OR IGNORE` + `UPDATE` + `SELECT` en single commit.
+- `save_embedding()` y `save_note_embedding()` aceptan `auto_commit: bool = True` — backfill usa `False` + single `commit()` por batch.
+- MCP connect timeout: 10s (antes 30s). `_tools_by_server: dict[str, list[str]]` cache en `McpManager` — evita iterar `_tools` en `list_servers()`, `hot_remove_server()`, `_register_fetch_category()`.
 
 
 ## Patrones

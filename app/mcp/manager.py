@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Timeout for individual MCP tool calls (seconds)
 MCP_TOOL_TIMEOUT = 30.0
 # Timeout for connecting to an MCP server (seconds)
-MCP_CONNECT_TIMEOUT = 30.0
+MCP_CONNECT_TIMEOUT = 10.0
 
 
 def _make_handler(session: ClientSession, tool_name: str):
@@ -74,6 +74,8 @@ class McpManager:
         self._server_descriptions: dict[str, str] = {}
         # Keep raw server configs for save/reload
         self._server_configs: dict[str, dict] = {}
+        # Cache: server_name -> list of tool names (invalidated on add/remove)
+        self._tools_by_server: dict[str, list[str]] = {}
         # Tracks which web-fetching backend is active: "puppeteer" | "mcp-fetch" | "unavailable"
         self._fetch_mode: str = "unavailable"
 
@@ -184,6 +186,7 @@ class McpManager:
             logger.error("Failed to list tools for server %s: %s", server_name, e)
             return
 
+        server_tool_names: list[str] = []
         for tool in result.tools:
             # Detect name collisions
             if tool.name in self._tools:
@@ -203,7 +206,9 @@ class McpManager:
                 skill_name=f"mcp::{server_name}",
             )
             self._tools[tool.name] = tool_def
+            server_tool_names.append(tool.name)
             logger.info("Registered MCP tool: %s (server: %s)", tool.name, server_name)
+        self._tools_by_server[server_name] = server_tool_names
 
     # ------------------------------------------------------------------
     # Hot-reload public API
@@ -247,10 +252,10 @@ class McpManager:
         if name not in self._sessions:
             return f"Server '{name}' is not connected."
 
-        # Remove tools registered by this server
-        to_remove = [k for k, v in self._tools.items() if v.skill_name == f"mcp::{name}"]
+        # Remove tools registered by this server (using cache for O(1) lookup)
+        to_remove = self._tools_by_server.pop(name, [])
         for k in to_remove:
-            del self._tools[k]
+            self._tools.pop(k, None)
 
         # Close per-server stack
         if name in self._server_stacks:
@@ -280,7 +285,7 @@ class McpManager:
         # Connected servers
         for name in self._sessions:
             seen.add(name)
-            tool_count = sum(1 for t in self._tools.values() if t.skill_name == f"mcp::{name}")
+            tool_count = len(self._tools_by_server.get(name, []))
             result.append(
                 {
                     "name": name,
@@ -330,14 +335,12 @@ class McpManager:
         }
         puppeteer_tools = [
             name
-            for name, tool in self._tools.items()
-            if tool.skill_name == "mcp::puppeteer" and name in _PUPPETEER_FETCH_TOOLS
+            for name in self._tools_by_server.get("puppeteer", [])
+            if name in _PUPPETEER_FETCH_TOOLS
         ]
 
         # mcp-fetch tools (fallback, plain HTTP)
-        mcp_fetch_tools = [
-            name for name, tool in self._tools.items() if tool.skill_name == "mcp::mcp-fetch"
-        ]
+        mcp_fetch_tools = self._tools_by_server.get("mcp-fetch", [])
 
         if puppeteer_tools:
             register_dynamic_category("fetch", puppeteer_tools)
