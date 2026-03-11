@@ -876,6 +876,11 @@ _CORRECTION_PATTERNS_LOW = [
 _CORR_HIGH_RE = [_re.compile(p, _re.IGNORECASE) for p in _CORRECTION_PATTERNS_HIGH]
 _CORR_LOW_RE = [_re.compile(p, _re.IGNORECASE) for p in _CORRECTION_PATTERNS_LOW]
 
+_URL_RE = _re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
+_YOUTUBE_RE = _re.compile(
+    r"https?://(?:www\.)?(?:youtube\.com/watch|youtu\.be/|youtube\.com/shorts/)"
+)
+
 
 def _detect_correction(user_text: str) -> float | None:
     """Detect if user_text is correcting the bot's previous response.
@@ -1349,16 +1354,12 @@ async def _handle_message(
 
         # Fallback notification: if user sent a URL but Puppeteer is unavailable,
         # inject a system note so the LLM can inform the user transparently.
-        _url_pattern = _re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
-        _has_url_in_msg = bool(_url_pattern.search(user_text or ""))
+        _has_url_in_msg = bool(_URL_RE.search(user_text or ""))
         _fetch_mode = mcp_manager.get_fetch_mode() if mcp_manager else "unavailable"
         if _has_url_in_msg and _fetch_mode == "mcp-fetch":
             logger.info("URL fetch request using mcp-fetch fallback (Puppeteer unavailable)")
         # Detect YouTube/video URLs — these can't be fetched by any method
-        _youtube_re = _re.compile(
-            r"https?://(?:www\.)?(?:youtube\.com/watch|youtu\.be/|youtube\.com/shorts/)"
-        )
-        _has_youtube_url = bool(_youtube_re.search(user_text or "")) if _has_url_in_msg else False
+        _has_youtube_url = bool(_YOUTUBE_RE.search(user_text or "")) if _has_url_in_msg else False
 
         _mcp_fetch_note: str | None = None
         if _has_youtube_url:

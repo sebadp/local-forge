@@ -319,11 +319,18 @@ def select_tools(
     if not categories:
         return []
 
+    # Filter to categories that are actually registered — dynamic categories like "fetch"
+    # may not exist when the corresponding MCP server isn't running. Including phantom
+    # categories inflates len(categories) and lowers per_cat, wasting tool budget.
+    active_categories = [c for c in categories if c in TOOL_CATEGORIES]
+    if not active_categories:
+        return []
+
     selected: list[dict] = []
     seen: set[str] = set()
-    per_cat = max(1, max_tools // len(categories))
+    per_cat = max(1, max_tools // len(active_categories))
 
-    for category in categories:
+    for category in active_categories:
         tool_names = TOOL_CATEGORIES.get(category, [])
         cat_count = 0
         for name in tool_names:

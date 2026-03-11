@@ -308,9 +308,18 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning("Embedding backfill failed (non-critical)", exc_info=True)
 
-        _backfill_task = asyncio.create_task(_safe_backfill())
+        _backfill_task = _asyncio.create_task(_safe_backfill())
 
     yield
+
+    # Cancel the embedding backfill before tearing down DB/HTTP so it doesn't
+    # try to use already-closed resources.
+    if _backfill_task is not None and not _backfill_task.done():
+        _backfill_task.cancel()
+        try:
+            await _backfill_task
+        except _asyncio.CancelledError:
+            pass
 
     await wait_for_in_flight(timeout=30.0)
     if memory_watcher:

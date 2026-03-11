@@ -425,11 +425,29 @@ async def execute_tool_loop(
                             ),
                         )
                     )
-                    retry = await ollama_client.chat_with_tools(working_messages, tools=tools)
+                    if trace:
+                        async with trace.span(
+                            f"llm:iteration_{iteration + 1}:retry",
+                            kind="generation",
+                            parent_id=iteration_span_id,
+                        ) as retry_span:
+                            retry = await ollama_client.chat_with_tools(
+                                working_messages, tools=tools
+                            )
+                            retry_span.set_output(
+                                {
+                                    "content": (retry.content or "")[:300],
+                                    "tool_calls_count": len(retry.tool_calls or []),
+                                }
+                            )
+                    else:
+                        retry = await ollama_client.chat_with_tools(working_messages, tools=tools)
                     if retry.content and retry.content.strip() and not retry.tool_calls:
                         return retry.content
                     # If still empty or wants to call tools, let the loop continue
                     if retry.tool_calls:
+                        # Remove the nudge message — it would confuse the LLM on later iterations
+                        working_messages.pop()
                         response = retry
                         # Fall through to tool execution below
                     else:
@@ -438,7 +456,20 @@ async def execute_tool_loop(
                             "Tool iteration %d: retry still empty, forcing text-only",
                             iteration + 1,
                         )
-                        forced = await ollama_client.chat_with_tools(working_messages, tools=None)
+                        if trace:
+                            async with trace.span(
+                                f"llm:iteration_{iteration + 1}:forced",
+                                kind="generation",
+                                parent_id=iteration_span_id,
+                            ) as forced_span:
+                                forced = await ollama_client.chat_with_tools(
+                                    working_messages, tools=None
+                                )
+                                forced_span.set_output({"content": (forced.content or "")[:300]})
+                        else:
+                            forced = await ollama_client.chat_with_tools(
+                                working_messages, tools=None
+                            )
                         return forced.content
                 else:
                     return response.content
