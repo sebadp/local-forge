@@ -119,7 +119,7 @@ async def cmd_agent_resume(args: str, context: CommandContext) -> str:
     # just from the summary dict without importing internal models here,
     # the agent loop will rely on its task plan injection to reorient itself.
 
-    asyncio.create_task(
+    task = asyncio.create_task(
         run_agent_session(
             session=reconstructed_session,
             ollama_client=context.ollama_client,
@@ -130,6 +130,8 @@ async def cmd_agent_resume(args: str, context: CommandContext) -> str:
             repository=context.repository,
         )
     )
+    _bg_agent_tasks.add(task)
+    task.add_done_callback(_bg_agent_tasks.discard)
 
     plan_preview = (
         reconstructed_session.task_plan.split("\n")[0]

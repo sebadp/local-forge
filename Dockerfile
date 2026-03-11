@@ -28,15 +28,17 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir "setuptools>=69"
 RUN pip install --no-cache-dir --no-build-isolation .
 
-COPY app/ app/
-COPY skills/ skills/
-
-# Pre-install MCP server packages to avoid npx cold-start timeouts
+# Pre-install MCP server packages to avoid npx cold-start timeouts.
+# Placed before COPY so this layer is only invalidated when the Dockerfile changes,
+# not on every source code change.
 RUN npm install -g @modelcontextprotocol/server-puppeteer \
     @modelcontextprotocol/server-filesystem \
     @modelcontextprotocol/server-github \
     @modelcontextprotocol/server-memory \
     mcp-fetch-server
+
+COPY app/ app/
+COPY skills/ skills/
 
 ARG UID=1000
 ARG GID=1000

@@ -501,7 +501,7 @@ async def _run_planner_session(
                 logger.error("Error saving session round: %s", e)
 
             # Progress update
-            done_count = sum(1 for t in plan.tasks if t.status == "done")
+            done_count = plan.success_count()
             status_icon = "✅" if task.status == "done" else "❌"
             try:
                 await wa_client.send_message(

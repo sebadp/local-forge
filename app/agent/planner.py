@@ -131,6 +131,8 @@ def _parse_plan_json(raw: str, objective: str) -> AgentPlan:
     if not raw_tasks:
         return _fallback_plan(objective)
 
+    import re as _re
+
     tasks: list[TaskStep] = []
     for t in raw_tasks[:6]:  # Cap at 6 tasks
         # Coerce ID to int — LLMs sometimes generate strings like "#3-reader"
@@ -138,8 +140,6 @@ def _parse_plan_json(raw: str, objective: str) -> AgentPlan:
         if isinstance(raw_id, int):
             task_id = raw_id
         else:
-            import re as _re
-
             match = _re.search(r"\d+", str(raw_id))
             task_id = int(match.group()) if match else len(tasks) + 1
 

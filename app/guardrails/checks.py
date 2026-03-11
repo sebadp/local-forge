@@ -110,10 +110,12 @@ async def check_language_match(
     try:
         from langdetect import detect
 
-        user_lang, reply_lang = await asyncio.gather(
-            asyncio.to_thread(detect, user_text),
-            asyncio.to_thread(detect, reply),
-        )
+        # langdetect.detect() uses non-thread-safe global state; run both detections
+        # sequentially inside a single thread to avoid race conditions.
+        def _detect_both() -> tuple[str, str]:
+            return detect(user_text), detect(reply)
+
+        user_lang, reply_lang = await asyncio.to_thread(_detect_both)
         passed = user_lang == reply_lang
         latency_ms = (time.monotonic() - start) * 1000
         return GuardrailResult(

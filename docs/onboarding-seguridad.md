@@ -294,14 +294,14 @@ process = await asyncio.create_subprocess_exec(
     *tokens,
     stdout=PIPE, stderr=PIPE,
     stdin=DEVNULL,   # no puede leer input
-    shell=False,     # no hay interpolacion de shell
     cwd=_PROJECT_ROOT
 )
 ```
 
-**Por que `shell=False`**: Con `shell=True`, el input pasa por `/bin/sh` y un atacante
-podria inyectar `; rm -rf /` al final de un comando. Con `shell=False`, cada token
-es un argumento literal — no hay interpretacion de metacaracteres.
+**Por que `create_subprocess_exec`**: A diferencia de `create_subprocess_shell`, `exec` no
+pasa el comando por `/bin/sh` — cada token es un argumento literal y no hay interpretacion
+de metacaracteres como `; rm -rf /`. El parametro `shell` no existe en `create_subprocess_exec`
+(es exclusivo de `create_subprocess_shell`).
 
 ---
 

@@ -197,6 +197,12 @@ class McpManager:
                     server_name,
                     existing,
                 )
+                # Remove the collided name from the previous server's cache so that
+                # hot_remove_server(prev) doesn't later delete this server's tool.
+                prev_server = existing[5:] if existing and existing.startswith("mcp::") else None
+                prev_names = self._tools_by_server.get(prev_server) if prev_server else None
+                if prev_names is not None and tool.name in prev_names:
+                    prev_names.remove(tool.name)
 
             tool_def = ToolDefinition(
                 name=tool.name,
