@@ -104,6 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_activity_project ON project_activity(project_id, 
 CREATE TABLE IF NOT EXISTS project_notes (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id),
+    title      TEXT,
     content    TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

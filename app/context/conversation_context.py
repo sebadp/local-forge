@@ -164,47 +164,35 @@ class ConversationContext:
                 logger.warning("ConversationContext: semantic note search failed", exc_info=True)
                 return []
 
-        async def _get_projects_summary() -> str | None:
-            try:
-                # Single JOIN query eliminates N+1 (was 1 + N queries)
-                projects = await repository.get_projects_with_progress(
-                    phone_number, status="active", limit=5
-                )
-                if not projects:
-                    return None
-                lines = ["Active projects:"]
-                for p in projects:
-                    total = p["total_tasks"]
-                    done = p["done_tasks"]
-                    pct = int(done / total * 100) if total > 0 else 0
-                    lines.append(f"  - {p['name']}: {done}/{total} tasks ({pct}%)")
-                return "\n".join(lines)
-            except Exception:
-                logger.warning(
-                    "ConversationContext: failed to fetch projects summary", exc_info=True
-                )
+        def _build_projects_summary(projects: list[dict]) -> str | None:
+            if not projects:
                 return None
+            lines = ["Active projects:"]
+            for p in projects:
+                total = p["total_tasks"]
+                done = p["done_tasks"]
+                pct = int(done / total * 100) if total > 0 else 0
+                lines.append(f"  - {p['name']}: {done}/{total} tasks ({pct}%)")
+            return "\n".join(lines)
 
-        async def _get_project_notes(embedding: list[float] | None) -> list:
+        async def _get_project_notes(embedding: list[float] | None, projects: list[dict]) -> list:
             if (
                 settings is None
                 or not settings.semantic_search_enabled
                 or not vec_available
                 or embedding is None
+                or not projects
             ):
                 return []
             try:
-                projects = await repository.get_projects_with_progress(
-                    phone_number, status="active", limit=5
+                # Parallel search across all active projects
+                results = await asyncio.gather(
+                    *[
+                        repository.search_similar_project_notes(p["id"], embedding, top_k=3)
+                        for p in projects
+                    ]
                 )
-                if not projects:
-                    return []
-                all_notes: list = []
-                for p in projects:
-                    notes = await repository.search_similar_project_notes(
-                        p["id"], embedding, top_k=3
-                    )
-                    all_notes.extend(notes)
+                all_notes: list = [note for notes in results for note in notes]
                 return all_notes[:5]
             except Exception:
                 logger.warning("ConversationContext: project note search failed", exc_info=True)
@@ -254,25 +242,34 @@ class ConversationContext:
         _embed_ms = (time.monotonic() - _t0) * 1000
 
         # Step 2: parallel fetches (all independent now that embedding is ready)
-        # Note: project_notes runs as a separate task to avoid mypy's 6-item asyncio.gather limit.
+        # Active projects are fetched once and shared between summary and note search.
         _t1 = time.monotonic()
-        _project_notes_task = asyncio.create_task(_get_project_notes(query_embedding))
+        try:
+            active_projects = await repository.get_projects_with_progress(
+                phone_number, status="active", limit=5
+            )
+        except Exception:
+            logger.warning("ConversationContext: failed to fetch active projects", exc_info=True)
+            active_projects = []
+
+        _project_notes_task = asyncio.create_task(
+            _get_project_notes(query_embedding, active_projects)
+        )
         (
             memories_and_stats,
             windowed,
             sticky,
             logs,
             relevant_notes,
-            projects_summary,
         ) = await asyncio.gather(
             _get_memories_with_threshold(query_embedding),
             conversation_manager.get_windowed_history(phone_number, verbatim_count=verbatim_count),
             repository.get_sticky_categories(conv_id) if conv_id else _empty_list(),
             _get_daily_logs(),
             _get_relevant_notes(query_embedding),
-            _get_projects_summary(),
         )
         project_notes: list = await _project_notes_task
+        projects_summary = _build_projects_summary(active_projects)
         _searches_ms = (time.monotonic() - _t1) * 1000
         build_timing = {"embed_ms": round(_embed_ms, 1), "searches_ms": round(_searches_ms, 1)}
 

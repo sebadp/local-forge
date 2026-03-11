@@ -541,8 +541,8 @@ async def execute_tool_loop(
             if query and repository and embed_model:
                 try:
                     query_emb = await ollama_client.embed([query], model=embed_model)
-                    tool_names = await repository.search_similar_tools(query_emb[0], top_k=5)
-                    for name in tool_names:
+                    similar_names = await repository.search_similar_tools(query_emb[0], top_k=5)
+                    for name in similar_names:
                         if name in all_tools_map and name not in existing_names:
                             tools.append(all_tools_map[name])
                             existing_names.add(name)

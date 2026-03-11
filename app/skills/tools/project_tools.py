@@ -257,6 +257,13 @@ def register(
         note = await repository.get_project_note(note_id)
         if note is None:
             return f"Note {note_id} not found."
+        # Ownership check: verify the note's project belongs to the current user
+        phone = _current_user_phone.get()
+        if not phone:
+            return "No user context available."
+        project = await repository.get_project(note.project_id)
+        if project is None or project.phone_number != phone:
+            return f"Note {note_id} not found."
         header = f"[{note.id}]"
         if note.title:
             header += f" {note.title}"
