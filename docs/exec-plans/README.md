@@ -26,6 +26,7 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | Metrics Hardening — Token breakdown, latencias p95, semantic hit rate | [`38-metrics_hardening_prd.md`](38-metrics_hardening_prd.md) / [`38-metrics_hardening_prp.md`](38-metrics_hardening_prp.md) | ✅ Completado |
 | Agent Metrics & Efficacy — Tool efficiency, context quality, agent efficacy | [`39-agent_metrics_prd.md`](39-agent_metrics_prd.md) / [`39-agent_metrics_prp.md`](39-agent_metrics_prp.md) | 📋 Pendiente |
 | Testing Bugfix Sprint — 19 bugs de sesion real (search, agent, routing, datetime, MCP) | [`40-testing_bugfix_prd.md`](40-testing_bugfix_prd.md) / [`40-testing_bugfix_prp.md`](40-testing_bugfix_prp.md) | ✅ Completado |
+| Project Notes & Tool RAG — Persistencia de contenido + descubrimiento semántico de tools | [`41-project_notes_tool_rag_prd.md`](41-project_notes_tool_rag_prd.md) / [`41-project_notes_tool_rag_prp.md`](41-project_notes_tool_rag_prp.md) | 📋 Pendiente |
 
 ## Convenciones
 

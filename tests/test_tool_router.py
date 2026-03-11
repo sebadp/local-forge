@@ -227,13 +227,16 @@ async def test_classify_prompt_includes_few_shot_examples():
 
 
 def test_build_request_more_tools_schema_has_required_categories_param():
-    """Schema must have 'categories' as a required array parameter and correct tool name."""
+    """Schema must have 'categories' and 'query' params. Neither is required (Tool RAG supports both)."""
     schema = build_request_more_tools_schema(["github"])
     assert schema["function"]["name"] == REQUEST_MORE_TOOLS_NAME
     params = schema["function"]["parameters"]
     assert "categories" in params["properties"]
     assert params["properties"]["categories"]["type"] == "array"
-    assert "categories" in params["required"]
+    assert "query" in params["properties"]
+    assert params["properties"]["query"]["type"] == "string"
+    # Neither categories nor query is strictly required — caller uses one or both
+    assert params["required"] == []
 
 
 async def test_classify_scheduling_as_time():

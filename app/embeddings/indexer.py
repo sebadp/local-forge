@@ -116,6 +116,74 @@ async def backfill_embeddings(
     return count
 
 
+async def backfill_project_note_embeddings(
+    repository: Repository,
+    ollama_client: OllamaClient,
+    model: str,
+) -> int:
+    """Backfill embeddings for all unembedded project notes. Returns count embedded."""
+    unembedded = await repository.get_unembedded_project_notes()
+    if not unembedded:
+        return 0
+
+    count = 0
+    for i in range(0, len(unembedded), BATCH_SIZE):
+        batch = unembedded[i : i + BATCH_SIZE]
+        valid = [(note_id, content[:_MAX_EMBED_CHARS]) for note_id, content in batch if content]
+        if not valid:
+            continue
+        ids, texts = zip(*valid, strict=False)
+        try:
+            embeddings = await ollama_client.embed(list(texts), model=model)
+            for note_id, emb in zip(ids, embeddings, strict=False):
+                await repository.save_project_note_embedding(note_id, emb, auto_commit=False)
+                count += 1
+            await repository.commit()
+        except Exception:
+            logger.warning(
+                "Failed to backfill project note batch %d-%d", i, i + len(batch), exc_info=True
+            )
+
+    if count:
+        logger.info("Backfilled %d project note embeddings", count)
+    return count
+
+
+async def embed_tool_descriptions(
+    tools_map: dict[str, dict],
+    repository: Repository,
+    ollama_client: OllamaClient,
+    model: str,
+) -> int:
+    """Embed all tool descriptions for semantic tool discovery. Returns count embedded."""
+    texts_by_name: list[tuple[str, str]] = []
+    for name, schema in tools_map.items():
+        func = schema.get("function", {})
+        desc = func.get("description", "")
+        params = func.get("parameters", {}).get("properties", {})
+        param_names = ", ".join(params.keys()) if params else ""
+        text = f"{name}: {desc}"
+        if param_names:
+            text += f" (params: {param_names})"
+        texts_by_name.append((name, text))
+
+    if not texts_by_name:
+        return 0
+
+    all_texts = [t[:_MAX_EMBED_CHARS] for _, t in texts_by_name]
+    try:
+        embeddings = await ollama_client.embed(all_texts, model=model)
+        for (name, _), emb in zip(texts_by_name, embeddings, strict=False):
+            await repository.save_tool_embedding(name, emb, auto_commit=False)
+        await repository.commit()
+        count = len(texts_by_name)
+        logger.info("Embedded %d tool descriptions for semantic tool discovery", count)
+        return count
+    except Exception:
+        logger.warning("Failed to embed tool descriptions", exc_info=True)
+        return 0
+
+
 async def backfill_note_embeddings(
     repository: Repository,
     ollama_client: OllamaClient,

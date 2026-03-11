@@ -281,6 +281,10 @@ VEC_SCHEMA_PROJECT_NOTES = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS vec_project_notes "
     "USING vec0(note_id INTEGER PRIMARY KEY, embedding float[{dims}])"
 )
+VEC_SCHEMA_TOOLS = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS vec_tools "
+    "USING vec0(tool_name TEXT PRIMARY KEY, embedding float[{dims}])"
+)
 
 
 async def init_db(db_path: str, embedding_dims: int = 768) -> tuple[aiosqlite.Connection, bool]:
@@ -300,6 +304,14 @@ async def init_db(db_path: str, embedding_dims: int = 768) -> tuple[aiosqlite.Co
     await conn.execute("PRAGMA foreign_keys=ON")
     await conn.executescript(SCHEMA)
     await conn.executescript(TRACING_SCHEMA)
+
+    # Migrate project_notes: add title column if missing
+    cursor = await conn.execute("PRAGMA table_info(project_notes)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    if "title" not in cols:
+        logger.info("Migrating project_notes: adding 'title' column")
+        await conn.execute("ALTER TABLE project_notes ADD COLUMN title TEXT")
+        await conn.commit()
 
     # Migrate existing `traces` table if it was created without 'agent' message_type
     cursor = await conn.execute(
@@ -330,6 +342,7 @@ async def init_db(db_path: str, embedding_dims: int = 768) -> tuple[aiosqlite.Co
         await conn.execute(VEC_SCHEMA_MEMORIES.format(dims=embedding_dims))
         await conn.execute(VEC_SCHEMA_NOTES.format(dims=embedding_dims))
         await conn.execute(VEC_SCHEMA_PROJECT_NOTES.format(dims=embedding_dims))
+        await conn.execute(VEC_SCHEMA_TOOLS.format(dims=embedding_dims))
         await conn.commit()
         vec_available = True
         logger.info("sqlite-vec loaded successfully (dims=%d)", embedding_dims)

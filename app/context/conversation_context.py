@@ -62,6 +62,9 @@ class ConversationContext:
     projects_summary: str | None = None
     """Brief summary of active projects for this user."""
 
+    project_notes: list = field(default_factory=list)
+    """Semantically relevant project notes/documents for active projects."""
+
     # Routing state
     sticky_categories: list[str] = field(default_factory=list)
     """Categories from the last turn that used tools. Used as fallback for ambiguous follow-ups."""
@@ -182,6 +185,31 @@ class ConversationContext:
                 )
                 return None
 
+        async def _get_project_notes(embedding: list[float] | None) -> list:
+            if (
+                settings is None
+                or not settings.semantic_search_enabled
+                or not vec_available
+                or embedding is None
+            ):
+                return []
+            try:
+                projects = await repository.get_projects_with_progress(
+                    phone_number, status="active", limit=5
+                )
+                if not projects:
+                    return []
+                all_notes: list = []
+                for p in projects:
+                    notes = await repository.search_similar_project_notes(
+                        p["id"], embedding, top_k=3
+                    )
+                    all_notes.extend(notes)
+                return all_notes[:5]
+            except Exception:
+                logger.warning("ConversationContext: project note search failed", exc_info=True)
+                return []
+
         async def _get_memories_with_threshold(
             embedding: list[float] | None,
         ) -> tuple[list[str], dict]:
@@ -226,7 +254,9 @@ class ConversationContext:
         _embed_ms = (time.monotonic() - _t0) * 1000
 
         # Step 2: parallel fetches (all independent now that embedding is ready)
+        # Note: project_notes runs as a separate task to avoid mypy's 6-item asyncio.gather limit.
         _t1 = time.monotonic()
+        _project_notes_task = asyncio.create_task(_get_project_notes(query_embedding))
         (
             memories_and_stats,
             windowed,
@@ -242,6 +272,7 @@ class ConversationContext:
             _get_relevant_notes(query_embedding),
             _get_projects_summary(),
         )
+        project_notes: list = await _project_notes_task
         _searches_ms = (time.monotonic() - _t1) * 1000
         build_timing = {"embed_ms": round(_embed_ms, 1), "searches_ms": round(_searches_ms, 1)}
 
@@ -273,6 +304,7 @@ class ConversationContext:
             daily_logs=logs,
             relevant_notes=relevant_notes,
             projects_summary=projects_summary,
+            project_notes=project_notes,
             sticky_categories=sticky or [],
             query_embedding=query_embedding,
             search_stats=search_stats,

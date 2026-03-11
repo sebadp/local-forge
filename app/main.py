@@ -272,7 +272,13 @@ async def lifespan(app: FastAPI):
     if vec_available and settings.semantic_search_enabled:
 
         async def _safe_backfill() -> None:
-            from app.embeddings.indexer import backfill_embeddings, backfill_note_embeddings
+            from app.embeddings.indexer import (
+                backfill_embeddings,
+                backfill_note_embeddings,
+                backfill_project_note_embeddings,
+                embed_tool_descriptions,
+            )
+            from app.skills.executor import _get_cached_tools_map
 
             try:
                 await backfill_embeddings(
@@ -281,6 +287,19 @@ async def lifespan(app: FastAPI):
                     settings.embedding_model,
                 )
                 await backfill_note_embeddings(
+                    repository,
+                    app.state.ollama_client,
+                    settings.embedding_model,
+                )
+                await backfill_project_note_embeddings(
+                    repository,
+                    app.state.ollama_client,
+                    settings.embedding_model,
+                )
+                # Embed tool descriptions for semantic tool discovery (Tool RAG)
+                tools_map = _get_cached_tools_map(skill_registry, mcp_manager)
+                await embed_tool_descriptions(
+                    tools_map,
                     repository,
                     app.state.ollama_client,
                     settings.embedding_model,

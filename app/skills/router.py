@@ -90,13 +90,15 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
         "create_project",
         "list_projects",
         "get_project",
+        "add_project_note",
+        "get_project_note",
+        "list_project_notes",
+        "search_project_notes",
         "add_task",
         "update_task",
-        "delete_task",
-        "project_progress",
         "update_project_status",
-        "add_project_note",
-        "search_project_notes",
+        "project_progress",
+        "delete_task",
     ],
     "evaluation": [
         "get_eval_summary",
@@ -351,6 +353,10 @@ def build_request_more_tools_schema(available_categories: list[str]) -> dict:
     request additional categories when the initial selection is insufficient.
     It is handled inline by execute_tool_loop — it never reaches the skill
     registry or the security policy engine.
+
+    Supports two discovery modes:
+    - categories: load all tools from a named category (existing behavior)
+    - query: natural language description → semantic search over tool embeddings (Tool RAG)
     """
     categories_str = ", ".join(sorted(available_categories))
     return {
@@ -358,13 +364,22 @@ def build_request_more_tools_schema(available_categories: list[str]) -> dict:
         "function": {
             "name": REQUEST_MORE_TOOLS_NAME,
             "description": (
-                "Request additional tool categories when the current tools are insufficient "
-                "for the task. Call this before attempting a task if you need tools that are "
-                f"not in the current set. Available categories: {categories_str}."
+                "Request additional tools when the current set is insufficient. "
+                "Use 'query' to describe what you need in plain language (e.g. 'save a note to a project'), "
+                "or 'categories' to load all tools from a named category. "
+                f"Available categories: {categories_str}."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Natural language description of the tool you need "
+                            "(e.g. 'save content to a project', 'read a file'). "
+                            "Preferred over categories when you know what you want to do but not the category name."
+                        ),
+                    },
                     "categories": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -377,7 +392,7 @@ def build_request_more_tools_schema(available_categories: list[str]) -> dict:
                         "description": "Brief explanation of why these tools are needed",
                     },
                 },
-                "required": ["categories"],
+                "required": [],
             },
         },
     }
