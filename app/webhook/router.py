@@ -571,6 +571,19 @@ def _format_notes(relevant_notes: list[Note]) -> str | None:
     )
 
 
+def _format_project_notes(project_notes: list) -> str | None:
+    """Format project notes/documents for context injection."""
+    if not project_notes:
+        return None
+    lines = ["Project documents and notes:"]
+    for n in project_notes:
+        header = f"[{n.id}]"
+        if n.title:
+            header += f" {n.title}"
+        lines.append(f"- {header}: {n.content[:500]}")
+    return "\n".join(lines)
+
+
 def _build_context(
     system_prompt: str,
     memories: list[str],
@@ -580,6 +593,7 @@ def _build_context(
     summary: str | None,
     history: list[ChatMessage],
     projects_summary: str | None = None,
+    project_notes: list | None = None,
 ) -> list[ChatMessage]:
     """Build LLM context from pre-fetched data (sync, no DB calls).
 
@@ -591,6 +605,7 @@ def _build_context(
     builder = ContextBuilder(system_prompt)
     builder.add_section("user_memories", _format_memories(memories))
     builder.add_section("active_projects", projects_summary)
+    builder.add_section("project_notes", _format_project_notes(project_notes or []))
     builder.add_section("relevant_notes", _format_notes(relevant_notes))
     builder.add_section("recent_activity", daily_logs)
     builder.add_section("capabilities", skills_summary)
@@ -1183,6 +1198,7 @@ async def _handle_message(
         history = ctx.history
         summary = ctx.summary
         projects_summary = ctx.projects_summary
+        project_notes = ctx.project_notes
 
         # Log search stats for observability (best-effort)
         if ctx.search_stats:
@@ -1370,6 +1386,7 @@ async def _handle_message(
             summary,
             history,
             projects_summary=projects_summary,
+            project_notes=project_notes,
         )
 
         # Inject mcp-fetch fallback note after context is built (append as system message)
@@ -1436,6 +1453,8 @@ async def _handle_message(
                             recent_messages=history,
                             sticky_categories=sticky_categories or None,
                             parent_span_id=loop_span.span_id,
+                            repository=repository,
+                            embed_model=settings.embedding_model,
                         )
                         loop_span.set_output({"reply_preview": reply[:100]})
                 else:
@@ -1463,6 +1482,8 @@ async def _handle_message(
                         user_facts=user_facts or None,
                         recent_messages=history,
                         sticky_categories=sticky_categories or None,
+                        repository=repository,
+                        embed_model=settings.embedding_model,
                     )
                 else:
                     reply = await ollama_client.chat(context)

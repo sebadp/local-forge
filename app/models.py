@@ -67,6 +67,7 @@ class ProjectTask(BaseModel):
 class ProjectNote(BaseModel):
     id: int
     project_id: int
+    title: str | None = None
     content: str
     created_at: str = ""
 

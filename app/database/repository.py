@@ -789,42 +789,73 @@ class Repository:
 
     # --- Project Notes ---
 
-    async def add_project_note(self, project_id: int, content: str) -> int:
+    async def add_project_note(
+        self, project_id: int, content: str, title: str | None = None
+    ) -> int:
         cursor = await self._conn.execute(
-            "INSERT INTO project_notes (project_id, content) VALUES (?, ?)",
-            (project_id, content),
+            "INSERT INTO project_notes (project_id, content, title) VALUES (?, ?, ?)",
+            (project_id, content, title),
         )
         await self._conn.commit()
         return cursor.lastrowid  # type: ignore[return-value]
 
+    async def get_project_note(self, note_id: int) -> ProjectNote | None:
+        """Retrieve a single project note by ID — full content, no truncation."""
+        cursor = await self._conn.execute(
+            "SELECT id, project_id, title, content, created_at FROM project_notes WHERE id = ?",
+            (note_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return ProjectNote(
+            id=row[0], project_id=row[1], title=row[2], content=row[3], created_at=row[4]
+        )
+
     async def list_project_notes(self, project_id: int) -> list[ProjectNote]:
         cursor = await self._conn.execute(
-            "SELECT id, project_id, content, created_at FROM project_notes "
+            "SELECT id, project_id, title, content, created_at FROM project_notes "
             "WHERE project_id = ? ORDER BY created_at DESC",
             (project_id,),
         )
         rows = await cursor.fetchall()
-        return [ProjectNote(id=r[0], project_id=r[1], content=r[2], created_at=r[3]) for r in rows]
+        return [
+            ProjectNote(id=r[0], project_id=r[1], title=r[2], content=r[3], created_at=r[4])
+            for r in rows
+        ]
+
+    async def get_unembedded_project_notes(self) -> list[tuple[int, str]]:
+        """Return (note_id, content) for project notes without embeddings."""
+        cursor = await self._conn.execute(
+            "SELECT pn.id, pn.content FROM project_notes pn "
+            "LEFT JOIN vec_project_notes v ON v.note_id = pn.id "
+            "WHERE v.note_id IS NULL"
+        )
+        rows = await cursor.fetchall()
+        return [(r[0], r[1]) for r in rows]
 
     async def delete_project_note(self, note_id: int) -> bool:
         cursor = await self._conn.execute("DELETE FROM project_notes WHERE id = ?", (note_id,))
         await self._conn.commit()
         return cursor.rowcount > 0
 
-    async def save_project_note_embedding(self, note_id: int, embedding: list[float]) -> None:
+    async def save_project_note_embedding(
+        self, note_id: int, embedding: list[float], auto_commit: bool = True
+    ) -> None:
         blob = self._serialize_vector(embedding)
         await self._conn.execute(
             "INSERT OR REPLACE INTO vec_project_notes (note_id, embedding) VALUES (?, ?)",
             (note_id, blob),
         )
-        await self._conn.commit()
+        if auto_commit:
+            await self._conn.commit()
 
     async def search_similar_project_notes(
         self, project_id: int, embedding: list[float], top_k: int = 5
     ) -> list[ProjectNote]:
         blob = self._serialize_vector(embedding)
         cursor = await self._conn.execute(
-            "SELECT pn.id, pn.project_id, pn.content, pn.created_at "
+            "SELECT pn.id, pn.project_id, pn.title, pn.content, pn.created_at "
             "FROM vec_project_notes v "
             "JOIN project_notes pn ON pn.id = v.note_id "
             "WHERE pn.project_id = ? AND v.embedding MATCH ? AND k = ? "
@@ -832,7 +863,32 @@ class Repository:
             (project_id, blob, top_k),
         )
         rows = await cursor.fetchall()
-        return [ProjectNote(id=r[0], project_id=r[1], content=r[2], created_at=r[3]) for r in rows]
+        return [
+            ProjectNote(id=r[0], project_id=r[1], title=r[2], content=r[3], created_at=r[4])
+            for r in rows
+        ]
+
+    async def save_tool_embedding(
+        self, tool_name: str, embedding: list[float], auto_commit: bool = True
+    ) -> None:
+        """Store embedding for a tool description (for semantic tool discovery)."""
+        blob = self._serialize_vector(embedding)
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO vec_tools (tool_name, embedding) VALUES (?, ?)",
+            (tool_name, blob),
+        )
+        if auto_commit:
+            await self._conn.commit()
+
+    async def search_similar_tools(self, embedding: list[float], top_k: int = 5) -> list[str]:
+        """Return tool names most similar to the query embedding."""
+        blob = self._serialize_vector(embedding)
+        cursor = await self._conn.execute(
+            "SELECT tool_name FROM vec_tools WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+            (blob, top_k),
+        )
+        rows = await cursor.fetchall()
+        return [r[0] for r in rows]
 
     # --- Tracing ---
 

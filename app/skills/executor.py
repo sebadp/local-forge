@@ -23,6 +23,7 @@ from app.skills.router import (
 from app.tracing.context import get_current_trace
 
 if TYPE_CHECKING:
+    from app.database.repository import Repository
     from app.mcp.manager import McpManager
 
 logger = logging.getLogger(__name__)
@@ -306,6 +307,8 @@ async def execute_tool_loop(
     sticky_categories: list[str] | None = None,
     hitl_callback: Callable[[str, dict, str], Awaitable[bool]] | None = None,
     parent_span_id: str | None = None,
+    repository: Repository | None = None,
+    embed_model: str | None = None,
 ) -> str:
     """Run the tool calling loop: classify intent, select tools, execute.
 
@@ -518,21 +521,41 @@ async def execute_tool_loop(
             tc = response.tool_calls[i]
             args = tc.get("function", {}).get("arguments", {})
             requested_cats = args.get("categories", [])
+            query = args.get("query", "")
             reason = args.get("reason", "")
 
-            new_tools = select_tools(requested_cats, all_tools_map, max_tools=max_tools)
             existing_names = {t.get("function", {}).get("name") for t in tools}
             added: list[str] = []
-            for tool_schema in new_tools:
-                tool_schema_name = tool_schema.get("function", {}).get("name")
-                if tool_schema_name and tool_schema_name not in existing_names:
-                    tools.append(tool_schema)
-                    existing_names.add(tool_schema_name)
-                    added.append(tool_schema_name)
+
+            # Path 1: category-based (existing behavior)
+            if requested_cats:
+                new_tools = select_tools(requested_cats, all_tools_map, max_tools=max_tools)
+                for tool_schema in new_tools:
+                    tool_schema_name = tool_schema.get("function", {}).get("name")
+                    if tool_schema_name and tool_schema_name not in existing_names:
+                        tools.append(tool_schema)
+                        existing_names.add(tool_schema_name)
+                        added.append(tool_schema_name)
+
+            # Path 2: semantic search (Tool RAG) — query in natural language
+            if query and repository and embed_model:
+                try:
+                    query_emb = await ollama_client.embed([query], model=embed_model)
+                    similar_names = await repository.search_similar_tools(query_emb[0], top_k=5)
+                    for name in similar_names:
+                        if name in all_tools_map and name not in existing_names:
+                            tools.append(all_tools_map[name])
+                            existing_names.add(name)
+                            added.append(name)
+                except Exception:
+                    logger.warning(
+                        "Semantic tool search failed in request_more_tools", exc_info=True
+                    )
 
             logger.info(
-                "request_more_tools: cats=%s, added=%d: %s (reason: %r)",
+                "request_more_tools: cats=%s, query=%r, added=%d: %s (reason: %r)",
                 requested_cats,
+                query,
                 len(added),
                 added,
                 reason,
@@ -543,7 +566,7 @@ async def execute_tool_loop(
                     "These tools are now available — use them in your next call to complete the task."
                 )
             else:
-                confirmation = "No new tools added (already available or unknown category)"
+                confirmation = "No new tools added (already available or unknown category/query)"
             tool_result_map[i] = ChatMessage(role="tool", content=confirmation)
 
         # Execute regular tool calls in parallel, preserving original index for ordering

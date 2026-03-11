@@ -233,20 +233,60 @@ def register(
             return f"Project '{pname}' is now {status}."
         return f"Failed to update project '{pname}'."
 
-    async def add_project_note(project_name: str, content: str) -> str:
+    async def add_project_note(project_name: str, content: str, title: str = "") -> str:
         result = await _resolve_project(project_name)
         if isinstance(result, str):
             return result
         project_id, pname = result
-        note_id = await repository.add_project_note(project_id, content)
-        await repository.log_project_activity(project_id, "note_added", content[:80])
+        note_title = title.strip() or None
+        note_id = await repository.add_project_note(project_id, content, title=note_title)
+        activity_detail = f"{note_title}: {content[:60]}" if note_title else content[:80]
+        await repository.log_project_activity(project_id, "note_added", activity_detail)
         # Embed best-effort
         if ollama_client and embed_model and vec_available:
             from app.embeddings.indexer import embed_project_note
 
-            await embed_project_note(note_id, content, repository, ollama_client, embed_model)
+            embed_text = f"{note_title}: {content}" if note_title else content
+            await embed_project_note(note_id, embed_text, repository, ollama_client, embed_model)
         logger.info("Added note %d to project '%s'", note_id, pname)
-        return f"Note saved to project '{pname}' (ID: {note_id})."
+        label = f" '{note_title}'" if note_title else ""
+        return f"Note{label} saved to project '{pname}' (ID: {note_id})."
+
+    async def get_project_note(note_id: int) -> str:
+        """Get the full content of a project note by ID — no truncation."""
+        note = await repository.get_project_note(note_id)
+        if note is None:
+            return f"Note {note_id} not found."
+        # Ownership check: verify the note's project belongs to the current user
+        phone = _current_user_phone.get()
+        if not phone:
+            return "No user context available."
+        project = await repository.get_project(note.project_id)
+        if project is None or project.phone_number != phone:
+            return f"Note {note_id} not found."
+        header = f"[{note.id}]"
+        if note.title:
+            header += f" {note.title}"
+        header += f"  (created: {note.created_at})"
+        return f"{header}\n\n{note.content}"
+
+    async def list_project_notes(project_name: str) -> str:
+        """List all notes in a project with title and content preview."""
+        result = await _resolve_project(project_name)
+        if isinstance(result, str):
+            return result
+        project_id, pname = result
+        notes = await repository.list_project_notes(project_id)
+        if not notes:
+            return f"No notes in project '{pname}'."
+        lines = [f"Notes in '{pname}':"]
+        for n in notes:
+            header = f"  [{n.id}]"
+            if n.title:
+                header += f" {n.title}"
+            preview = n.content[:300].replace("\n", " ")
+            lines.append(f"{header}: {preview}")
+        return "\n".join(lines)
 
     async def search_project_notes(project_name: str, query: str) -> str:
         result = await _resolve_project(project_name)
@@ -263,7 +303,10 @@ def register(
                 if notes:
                     lines = [f"Notes in '{pname}' matching '{query}':"]
                     for n in notes:
-                        lines.append(f"  [{n.id}] {n.content[:120]}")
+                        header = f"  [{n.id}]"
+                        if n.title:
+                            header += f" {n.title}"
+                        lines.append(f"{header}: {n.content[:500]}")
                     return "\n".join(lines)
             except Exception:
                 logger.warning("Semantic project note search failed, falling back", exc_info=True)
@@ -272,12 +315,19 @@ def register(
         if not notes:
             return f"No notes in project '{pname}'."
         query_lower = query.lower()
-        matched = [n for n in notes if query_lower in n.content.lower()]
+        matched = [
+            n
+            for n in notes
+            if query_lower in n.content.lower() or (n.title and query_lower in n.title.lower())
+        ]
         if not matched:
             return f"No notes in project '{pname}' matching '{query}'."
         lines = [f"Notes in '{pname}' matching '{query}':"]
         for n in matched:
-            lines.append(f"  [{n.id}] {n.content[:120]}")
+            header = f"  [{n.id}]"
+            if n.title:
+                header += f" {n.title}"
+            lines.append(f"{header}: {n.content[:500]}")
         return "\n".join(lines)
 
     # --- Register tools ---
@@ -420,12 +470,19 @@ def register(
 
     registry.register_tool(
         name="add_project_note",
-        description="Add a note to a project (searchable, with embeddings if available)",
+        description="Save a note or document to a project (searchable). Use title to name documents like chapters, outlines, drafts.",
         parameters={
             "type": "object",
             "properties": {
                 "project_name": {"type": "string", "description": "Name of the project"},
-                "content": {"type": "string", "description": "Note content"},
+                "content": {
+                    "type": "string",
+                    "description": "Note or document content (no length limit)",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional title for the document (e.g. 'Prologue', 'Chapter 1')",
+                },
             },
             "required": ["project_name", "content"],
         },
@@ -434,8 +491,39 @@ def register(
     )
 
     registry.register_tool(
+        name="get_project_note",
+        description="Get the full content of a project note or document by its ID",
+        parameters={
+            "type": "object",
+            "properties": {
+                "note_id": {
+                    "type": "integer",
+                    "description": "Note ID (from list_project_notes or search_project_notes)",
+                },
+            },
+            "required": ["note_id"],
+        },
+        handler=get_project_note,
+        skill_name="projects",
+    )
+
+    registry.register_tool(
+        name="list_project_notes",
+        description="List all notes and documents in a project with title and content preview",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_name": {"type": "string", "description": "Name of the project"},
+            },
+            "required": ["project_name"],
+        },
+        handler=list_project_notes,
+        skill_name="projects",
+    )
+
+    registry.register_tool(
         name="search_project_notes",
-        description="Search notes within a project by semantic or keyword query",
+        description="Search notes and documents within a project by semantic or keyword query",
         parameters={
             "type": "object",
             "properties": {
