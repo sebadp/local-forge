@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# --no-sandbox is safe inside a Docker container (the container IS the sandbox)
+# PUPPETEER_LAUNCH_OPTIONS is read by @modelcontextprotocol/server-puppeteer
+ENV PUPPETEER_LAUNCH_OPTIONS='{"headless":true,"args":["--no-sandbox","--disable-setuid-sandbox"]}'
+# ALLOW_DANGEROUS lets server-puppeteer accept --no-sandbox without throwing
+ENV ALLOW_DANGEROUS=true
 
 WORKDIR /app
 
@@ -22,6 +27,15 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir "setuptools>=69"
 RUN pip install --no-cache-dir --no-build-isolation .
+
+# Pre-install MCP server packages to avoid npx cold-start timeouts.
+# Placed before COPY so this layer is only invalidated when the Dockerfile changes,
+# not on every source code change.
+RUN npm install -g @modelcontextprotocol/server-puppeteer \
+    @modelcontextprotocol/server-filesystem \
+    @modelcontextprotocol/server-github \
+    @modelcontextprotocol/server-memory \
+    mcp-fetch-server
 
 COPY app/ app/
 COPY skills/ skills/

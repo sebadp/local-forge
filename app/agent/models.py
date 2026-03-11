@@ -40,8 +40,29 @@ class AgentPlan:
     max_replans: int = 3
 
     def next_task(self) -> TaskStep | None:
-        """Return the next pending task whose dependencies are satisfied."""
+        """Return the next pending task whose dependencies are satisfied.
+
+        Also marks tasks as failed if any of their dependencies failed
+        (cascade failure — no point running a task whose input is missing).
+        """
         done_ids = {t.id for t in self.tasks if t.status == "done"}
+        failed_ids = {t.id for t in self.tasks if t.status == "failed"}
+
+        # First pass: cascade-fail tasks blocked by failed dependencies
+        changed = True
+        while changed:
+            changed = False
+            for task in self.tasks:
+                if task.status != "pending":
+                    continue
+                blocked_by = [d for d in task.depends_on if d in failed_ids]
+                if blocked_by:
+                    task.status = "failed"
+                    task.result = f"Blocked: dependency #{blocked_by[0]} failed"
+                    failed_ids.add(task.id)
+                    changed = True
+
+        # Second pass: find runnable task
         for task in self.tasks:
             if task.status != "pending":
                 continue
@@ -51,6 +72,14 @@ class AgentPlan:
 
     def all_done(self) -> bool:
         return all(t.status in ("done", "failed") for t in self.tasks)
+
+    def has_failures(self) -> bool:
+        """Return True if any task failed."""
+        return any(t.status == "failed" for t in self.tasks)
+
+    def success_count(self) -> int:
+        """Return the number of successfully completed tasks."""
+        return sum(1 for t in self.tasks if t.status == "done")
 
     def to_markdown(self) -> str:
         """Render the plan as a markdown checklist for task plan injection."""

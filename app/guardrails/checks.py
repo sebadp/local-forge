@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 
@@ -40,23 +41,60 @@ def check_not_empty(reply: str) -> GuardrailResult:
     )
 
 
-def check_language_match(user_text: str, reply: str) -> GuardrailResult:
+async def check_language_match(
+    user_text: str, reply: str, default_language: str | None = None
+) -> GuardrailResult:
     """Check that reply is in the same language as user_text.
-    Only applies when both texts are >= 30 chars (langdetect is unreliable on short texts).
+
+    When user_text < 30 chars (too short for reliable detection), falls back to
+    ``default_language`` if provided — detects reply language and compares against it.
     Skips if user_text has no whitespace (URL, UUID, code) — not natural language.
+
+    langdetect is CPU-bound — runs in a thread to avoid blocking the event loop.
     """
     start = time.monotonic()
     stripped_user = user_text.strip()
 
-    # Skip if either text is too short
-    if len(stripped_user) < 30 or len(reply.strip()) < 30:
+    # Skip if reply is too short (nothing meaningful to detect)
+    if len(reply.strip()) < 30:
         latency_ms = (time.monotonic() - start) * 1000
         return GuardrailResult(
             passed=True,
             check_name="language_match",
-            details="skipped (text too short for reliable detection)",
+            details="skipped (reply too short for reliable detection)",
             latency_ms=latency_ms,
         )
+
+    # When user_text is too short, fall back to default_language if available
+    if len(stripped_user) < 30:
+        if not default_language:
+            latency_ms = (time.monotonic() - start) * 1000
+            return GuardrailResult(
+                passed=True,
+                check_name="language_match",
+                details="skipped (user text too short, no default language)",
+                latency_ms=latency_ms,
+            )
+        try:
+            from langdetect import detect
+
+            reply_lang = await asyncio.to_thread(detect, reply)
+            passed = reply_lang == default_language
+            latency_ms = (time.monotonic() - start) * 1000
+            return GuardrailResult(
+                passed=passed,
+                check_name="language_match",
+                details=default_language if not passed else "",
+                latency_ms=latency_ms,
+            )
+        except Exception:
+            latency_ms = (time.monotonic() - start) * 1000
+            return GuardrailResult(
+                passed=True,
+                check_name="language_match",
+                details="detection failed on short user text fallback",
+                latency_ms=latency_ms,
+            )
 
     # Skip if user_text is non-natural (URL, UUID, code with no spaces)
     words = stripped_user.split()
@@ -72,8 +110,12 @@ def check_language_match(user_text: str, reply: str) -> GuardrailResult:
     try:
         from langdetect import detect
 
-        user_lang = detect(user_text)
-        reply_lang = detect(reply)
+        # langdetect.detect() uses non-thread-safe global state; run both detections
+        # sequentially inside a single thread to avoid race conditions.
+        def _detect_both() -> tuple[str, str]:
+            return detect(user_text), detect(reply)
+
+        user_lang, reply_lang = await asyncio.to_thread(_detect_both)
         passed = user_lang == reply_lang
         latency_ms = (time.monotonic() - start) * 1000
         return GuardrailResult(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from app.skills.registry import SkillRegistry
 
@@ -15,7 +15,7 @@ MAX_RESULTS = 5
 def _perform_search(query: str, time_range: str | None = None) -> list[dict]:
     """Search DuckDuckGo using the duckduckgo-search library."""
     results = DDGS().text(
-        keywords=query,
+        query,
         timelimit=time_range,
         max_results=MAX_RESULTS,
     )

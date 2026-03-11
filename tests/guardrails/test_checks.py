@@ -99,36 +99,37 @@ class TestCheckNoPii:
 
 
 class TestCheckLanguageMatch:
-    def test_skips_when_user_text_too_short(self):
-        result = check_language_match("Hi", "Hola, ¿cómo puedo ayudarte hoy?")
+    async def test_skips_when_user_text_too_short(self):
+        result = await check_language_match("Hi", "Hola, ¿cómo puedo ayudarte hoy?")
         assert result.passed is True
         assert "skipped" in result.details
 
-    def test_skips_when_reply_too_short(self):
-        result = check_language_match("Como estas hoy amigo?", "Hi")
+    async def test_skips_when_reply_too_short(self):
+        result = await check_language_match("Como estas hoy amigo?", "Hi")
         assert result.passed is True
         assert "skipped" in result.details
 
-    def test_skips_when_both_too_short(self):
-        result = check_language_match("How are you?", "Fine")
+    async def test_skips_when_both_too_short(self):
+        result = await check_language_match("How are you?", "Fine")
         assert result.passed is True
         assert "skipped" in result.details
 
-    def test_passes_for_matching_languages(self):
-        user = "¿Cómo puedo ayudarte con tu proyecto hoy?"
-        reply = "Claro, puedo ayudarte con tu proyecto. ¿Qué necesitas exactamente?"
-        result = check_language_match(user, reply)
+    async def test_passes_for_matching_languages(self, mocker):
+        mocker.patch("langdetect.detect", return_value="es")
+        user = "Hola, necesito ayuda con mi proyecto de investigación"
+        reply = "Por supuesto, estaré encantado de ayudarte con tu proyecto"
+        result = await check_language_match(user, reply)
         assert result.passed is True
 
-    def test_skips_for_url_input(self):
+    async def test_skips_for_url_input(self):
         url = "https://acrobat.adobe.com/id/urn:aaid:sc:US:bd1137eb-32a1-498f-b5ad-c1aaeb244814"
         reply = "La URL que proporcionaste parece ser un identificador único para un documento en Adobe."
-        result = check_language_match(url, reply)
+        result = await check_language_match(url, reply)
         assert result.passed is True
         assert "non-natural" in result.details
 
-    def test_check_name(self):
-        result = check_language_match("short", "also short")
+    async def test_check_name(self):
+        result = await check_language_match("short", "also short")
         assert result.check_name == "language_match"
 
 

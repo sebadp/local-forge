@@ -403,12 +403,84 @@ async def execute_tool_loop(
             response = await ollama_client.chat_with_tools(working_messages, tools=tools)
 
         if not response.tool_calls:
-            logger.info(
-                "Tool iteration %d: LLM decided to reply directly: %r",
-                iteration + 1,
-                response.content[:150],
-            )
-            return response.content
+            # If the LLM chose to stop but returned empty/whitespace content,
+            # nudge it to summarize what it found so far instead of returning nothing.
+            if not response.content or not response.content.strip():
+                if iteration > 0:
+                    logger.warning(
+                        "Tool iteration %d: LLM returned empty reply, nudging for summary",
+                        iteration + 1,
+                    )
+                    working_messages.append(
+                        ChatMessage(
+                            role="system",
+                            content=(
+                                "Your reply was empty. Based on the tool results above, "
+                                "provide a complete text response summarizing what you found. "
+                                "If the tools returned no useful data, explain what you searched for "
+                                "and what information is still needed."
+                            ),
+                        )
+                    )
+                    if trace:
+                        async with trace.span(
+                            f"llm:iteration_{iteration + 1}:retry",
+                            kind="generation",
+                            parent_id=iteration_span_id,
+                        ) as retry_span:
+                            retry = await ollama_client.chat_with_tools(
+                                working_messages, tools=tools
+                            )
+                            retry_span.set_output(
+                                {
+                                    "content": (retry.content or "")[:300],
+                                    "tool_calls_count": len(retry.tool_calls or []),
+                                }
+                            )
+                    else:
+                        retry = await ollama_client.chat_with_tools(working_messages, tools=tools)
+                    if retry.content and retry.content.strip() and not retry.tool_calls:
+                        return retry.content
+                    # If still empty or wants to call tools, let the loop continue
+                    if retry.tool_calls:
+                        # Remove the nudge message — it would confuse the LLM on later iterations
+                        working_messages.pop()
+                        response = retry
+                        # Fall through to tool execution below
+                    else:
+                        # Last resort: force text-only response (no tools offered)
+                        logger.warning(
+                            "Tool iteration %d: retry still empty, forcing text-only",
+                            iteration + 1,
+                        )
+                        if trace:
+                            async with trace.span(
+                                f"llm:iteration_{iteration + 1}:forced",
+                                kind="generation",
+                                parent_id=iteration_span_id,
+                            ) as forced_span:
+                                forced = await ollama_client.chat_with_tools(
+                                    working_messages, tools=None
+                                )
+                                forced_span.set_output({"content": (forced.content or "")[:300]})
+                        else:
+                            forced = await ollama_client.chat_with_tools(
+                                working_messages, tools=None
+                            )
+                        return forced.content
+                else:
+                    return response.content
+            else:
+                logger.info(
+                    "Tool iteration %d: LLM decided to reply directly: %r",
+                    iteration + 1,
+                    response.content[:150],
+                )
+                return response.content
+
+        # If we reach here, response.tool_calls is guaranteed non-None
+        # (either from the original response or from a retry that produced tool calls).
+        assert response.tool_calls is not None
 
         tool_names = [tc.get("function", {}).get("name") for tc in response.tool_calls]
         logger.info(
@@ -465,11 +537,13 @@ async def execute_tool_loop(
                 added,
                 reason,
             )
-            confirmation = (
-                f"Loaded {len(added)} new tools: {', '.join(added)}"
-                if added
-                else "No new tools added (already available or unknown category)"
-            )
+            if added:
+                confirmation = (
+                    f"Loaded {len(added)} new tools: {', '.join(added)}. "
+                    "These tools are now available — use them in your next call to complete the task."
+                )
+            else:
+                confirmation = "No new tools added (already available or unknown category)"
             tool_result_map[i] = ChatMessage(role="tool", content=confirmation)
 
         # Execute regular tool calls in parallel, preserving original index for ordering
@@ -500,6 +574,17 @@ async def execute_tool_loop(
 
     # Safety: exceeded max iterations, force a text response without tools
     logger.warning("Max tool iterations (%d) reached, forcing text response", MAX_TOOL_ITERATIONS)
+    # Inject a nudge so the LLM summarizes what it found instead of returning empty
+    working_messages.append(
+        ChatMessage(
+            role="system",
+            content=(
+                "You have reached the maximum number of tool calls. "
+                "Summarize what you have found so far based on the tool results above. "
+                "Do NOT call any more tools. Provide a complete text response now."
+            ),
+        )
+    )
     response = await ollama_client.chat_with_tools(working_messages, tools=None)
     return response.content
 

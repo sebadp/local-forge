@@ -8,6 +8,8 @@ Tests cover:
 - Write tools in selfcode_tools (write_source_file, apply_patch)
 - /cancel and /agent commands
 - loop.py helpers (create_session, get_active_session, cancel_session)
+- Worker empty result detection
+- Synthesizer honesty prompt
 """
 
 from __future__ import annotations
@@ -431,3 +433,167 @@ async def test_cmd_agent_with_session(repository, memory_file, sample_session):
     result = await cmd_agent("", ctx)
     assert "running" in result
     assert "Fix the login bug" in result
+
+
+# ---------------------------------------------------------------------------
+# Worker empty result detection
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_empty_result_returns_sentinel():
+    """execute_worker returns sentinel when tool loop returns empty string."""
+    from app.agent.models import TaskStep
+    from app.agent.workers import execute_worker
+
+    task = TaskStep(id=1, description="Search for info", worker_type="general")
+    mock_client = AsyncMock()
+    mock_registry = AsyncMock()
+
+    with patch("app.agent.workers.execute_tool_loop", return_value=""):
+        result = await execute_worker(
+            task=task,
+            objective="Find data",
+            ollama_client=mock_client,
+            skill_registry=mock_registry,
+        )
+
+    assert "(no data found" in result
+
+
+async def test_worker_nonempty_result_passes_through():
+    """execute_worker returns the actual result when tool loop returns content."""
+    from app.agent.models import TaskStep
+    from app.agent.workers import execute_worker
+
+    task = TaskStep(id=1, description="Search for info", worker_type="general")
+    mock_client = AsyncMock()
+    mock_registry = AsyncMock()
+
+    with patch("app.agent.workers.execute_tool_loop", return_value="Found 5 results about AI"):
+        result = await execute_worker(
+            task=task,
+            objective="Find data",
+            ollama_client=mock_client,
+            skill_registry=mock_registry,
+        )
+
+    assert result == "Found 5 results about AI"
+
+
+async def test_worker_injects_dependency_context():
+    """execute_worker injects results from depends_on tasks into messages."""
+    from app.agent.models import AgentPlan, TaskStep
+    from app.agent.workers import execute_worker
+
+    task1 = TaskStep(
+        id=1, description="Step 1", worker_type="general", status="done", result="Data from step 1"
+    )
+    task2 = TaskStep(id=2, description="Step 2", worker_type="general", depends_on=[1])
+    plan = AgentPlan(objective="Test", tasks=[task1, task2])
+
+    mock_client = AsyncMock()
+    mock_registry = AsyncMock()
+    captured_messages = []
+
+    async def capture_messages(messages, **kwargs):
+        captured_messages.extend(messages)
+        return "Done"
+
+    with patch("app.agent.workers.execute_tool_loop", side_effect=capture_messages):
+        await execute_worker(
+            task=task2,
+            objective="Test",
+            ollama_client=mock_client,
+            skill_registry=mock_registry,
+            plan=plan,
+        )
+
+    # Should have system prompt, user msg, and dependency context
+    dep_msg = [m for m in captured_messages if "CONTEXT FROM PREVIOUS STEPS" in m.content]
+    assert len(dep_msg) == 1
+    assert "Data from step 1" in dep_msg[0].content
+
+
+# ---------------------------------------------------------------------------
+# Synthesizer honesty prompt
+# ---------------------------------------------------------------------------
+
+
+def test_synthesize_prompt_includes_honesty_clause():
+    """Verify the synthesize system prompt includes anti-hallucination directive."""
+    from app.agent.planner import _SYNTHESIZE_SYSTEM_PROMPT
+
+    assert "HONESTLY" in _SYNTHESIZE_SYSTEM_PROMPT
+    assert "Do NOT fabricate" in _SYNTHESIZE_SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# Dependency cascade failure
+# ---------------------------------------------------------------------------
+
+
+def test_next_task_cascades_failure_to_blocked_tasks():
+    """When a dependency fails, all tasks depending on it should be marked failed."""
+    from app.agent.models import AgentPlan, TaskStep
+
+    t1 = TaskStep(
+        id=1, description="Read repo", worker_type="reader", status="failed", result="Error"
+    )
+    t2 = TaskStep(id=2, description="Analyze code", worker_type="analyzer", depends_on=[1])
+    t3 = TaskStep(id=3, description="Check deps", worker_type="analyzer", depends_on=[1])
+    t4 = TaskStep(id=4, description="Report", worker_type="reporter", depends_on=[2, 3])
+
+    plan = AgentPlan(objective="Test", tasks=[t1, t2, t3, t4])
+
+    # next_task should cascade-fail t2, t3, t4 and return None
+    result = plan.next_task()
+    assert result is None
+    assert t2.status == "failed"
+    assert t3.status == "failed"
+    assert t4.status == "failed"
+    assert "Blocked" in (t2.result or "")
+    assert plan.all_done()
+
+
+def test_next_task_does_not_cascade_when_dep_done():
+    """Tasks with satisfied (done) dependencies should still be runnable."""
+    from app.agent.models import AgentPlan, TaskStep
+
+    t1 = TaskStep(id=1, description="Read repo", worker_type="reader", status="done", result="OK")
+    t2 = TaskStep(id=2, description="Analyze code", worker_type="analyzer", depends_on=[1])
+
+    plan = AgentPlan(objective="Test", tasks=[t1, t2])
+
+    result = plan.next_task()
+    assert result is t2
+    assert t2.status == "pending"
+
+
+def test_all_done_with_failures_triggers_has_failures():
+    """all_done + has_failures should distinguish success from cascade failure."""
+    from app.agent.models import AgentPlan, TaskStep
+
+    t1 = TaskStep(id=1, description="Read", worker_type="reader", status="failed", result="Error")
+    t2 = TaskStep(
+        id=2, description="Analyze", worker_type="analyzer", status="failed", depends_on=[1]
+    )
+
+    plan = AgentPlan(objective="Test", tasks=[t1, t2])
+
+    assert plan.all_done() is True
+    assert plan.has_failures() is True
+    assert plan.success_count() == 0
+
+
+def test_all_done_no_failures():
+    """When all tasks succeed, has_failures is False."""
+    from app.agent.models import AgentPlan, TaskStep
+
+    t1 = TaskStep(id=1, description="Read", worker_type="reader", status="done", result="OK")
+    t2 = TaskStep(id=2, description="Report", worker_type="reporter", status="done", result="OK")
+
+    plan = AgentPlan(objective="Test", tasks=[t1, t2])
+
+    assert plan.all_done() is True
+    assert plan.has_failures() is False
+    assert plan.success_count() == 2

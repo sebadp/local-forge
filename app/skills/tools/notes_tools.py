@@ -21,7 +21,7 @@ def register(
     embed_model: str | None = None,
     vec_available: bool = False,
 ) -> None:
-    async def save_note(title: str, content: str) -> str:
+    async def save_note(title: str, content: str, **_extra: object) -> str:
         logger.info(f"Saving note: {title}")
         note_id = await repository.save_note(title, content)
         msg = f"Note saved (ID: {note_id}): {title}"

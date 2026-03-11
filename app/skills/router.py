@@ -12,11 +12,23 @@ from app.tracing.context import get_current_trace
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled URL regex used in classify_intent hot path
+_RE_URL = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
+
+
 # Maps category names to tool names that belong to that category.
 # Builtin tools use their exact registered names.
 # MCP tools use the names exposed by the MCP server.
 TOOL_CATEGORIES: dict[str, list[str]] = {
-    "time": ["get_current_datetime", "convert_timezone", "schedule_task", "list_schedules"],
+    "time": [
+        "get_current_datetime",
+        "convert_timezone",
+        "schedule_task",
+        "list_schedules",
+        "create_cron",
+        "list_crons",
+        "delete_cron",
+    ],
     "math": ["calculate"],
     "weather": ["get_weather"],
     "search": ["web_search"],
@@ -42,11 +54,11 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
         "create_relations",
     ],
     "github": [
-        "list_issues",
-        "create_issue",
-        "search_repositories",
         "get_file_contents",
+        "search_repositories",
+        "list_issues",
         "list_pull_requests",
+        "create_issue",
         "create_pull_request",
         "create_or_update_file",
     ],
@@ -104,7 +116,7 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
         "write_debug_report",
         "get_conversation_transcript",
     ],
-    "conversation": ["get_recent_messages"],
+    "conversation": ["get_recent_messages", "get_conversation_transcript"],
     "shell": ["run_command", "manage_process"],
     "workspace": ["list_workspaces", "switch_workspace", "get_workspace_info"],
     "documentation": [
@@ -119,11 +131,13 @@ DEFAULT_CATEGORIES = ["time", "math", "weather", "search", "documentation"]
 # Maps worker_type -> list of TOOL_CATEGORIES that the worker should use.
 # Used by the planner-orchestrator to give each worker a focused tool set.
 WORKER_TOOL_SETS: dict[str, list[str]] = {
-    "reader": ["conversation", "selfcode", "evaluation", "notes", "debugging"],
-    "analyzer": ["evaluation", "selfcode", "debugging"],
-    "coder": ["selfcode", "shell"],
+    # Order matters: first categories get priority when max_tools < len(categories).
+    # Research/action tools first, introspection tools last.
+    "reader": ["search", "fetch", "github", "files", "news", "notes", "conversation", "debugging"],
+    "analyzer": ["github", "search", "evaluation", "selfcode", "debugging", "news"],
+    "coder": ["selfcode", "shell", "github"],
     "reporter": ["evaluation", "notes", "debugging"],
-    "general": ["selfcode", "shell", "notes", "evaluation", "conversation", "debugging"],
+    "general": ["search", "fetch", "github", "files", "shell", "selfcode", "notes", "conversation"],
 }
 
 _CLASSIFIER_PROMPT_TEMPLATE = (
@@ -136,7 +150,13 @@ _CLASSIFIER_PROMPT_TEMPLATE = (
     '"remember that I like coffee" → notes\n'
     '"search for restaurants nearby" → search\n'
     '"show my projects" → projects\n'
-    '"tell me a joke" → none\n\n'
+    '"tell me a joke" → none\n'
+    '"recuerdame en 5 minutos" → time\n'
+    '"set a reminder for tomorrow at 3pm" → time\n'
+    '"programa un cron diario a las 9" → time\n'
+    '"agrega una nota al proyecto X" → projects\n'
+    '"what are the latest news about AI" → news\n'
+    '"busca informacion sobre Python 3.13" → search\n\n'
     "{recent_context}"
     "Message to classify: {user_message}"
 )
@@ -191,8 +211,7 @@ async def classify_intent(
 
     # Fast-path for URLs: if the message contains a URL, ensure 'fetch' is an option
     # so the agent has the web browsing tools available.
-    url_pattern = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+")
-    has_url = bool(url_pattern.search(user_message))
+    has_url = bool(_RE_URL.search(user_message))
 
     # Build recent context block (last 3 turns = up to 6 messages)
     recent_context = ""
@@ -282,7 +301,7 @@ def select_tools(
     Budget is distributed proportionally across categories so every category receives
     representation when multiple categories are requested:
 
-        per_cat = max(2, max_tools // len(categories))
+        per_cat = max(1, max_tools // len(categories))
 
     A single category falls back to the full budget (per_cat == max_tools).
     The result is always capped at max_tools via a final slice.
@@ -298,11 +317,18 @@ def select_tools(
     if not categories:
         return []
 
+    # Filter to categories that are actually registered — dynamic categories like "fetch"
+    # may not exist when the corresponding MCP server isn't running. Including phantom
+    # categories inflates len(categories) and lowers per_cat, wasting tool budget.
+    active_categories = [c for c in categories if c in TOOL_CATEGORIES]
+    if not active_categories:
+        return []
+
     selected: list[dict] = []
     seen: set[str] = set()
-    per_cat = max(2, max_tools // len(categories))
+    per_cat = max(1, max_tools // len(active_categories))
 
-    for category in categories:
+    for category in active_categories:
         tool_names = TOOL_CATEGORIES.get(category, [])
         cat_count = 0
         for name in tool_names:

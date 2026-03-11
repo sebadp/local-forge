@@ -38,10 +38,16 @@ async def run_guardrails(
     _run_check(results, check_excessive_length, reply)
     _run_check(results, check_no_raw_tool_json, reply)
 
-    # Language check (configurable)
+    # Language check (configurable) — async because langdetect is CPU-bound
     language_enabled = settings is None or getattr(settings, "guardrails_language_check", True)
     if language_enabled:
-        _run_check(results, check_language_match, user_text, reply)
+        default_lang = getattr(settings, "guardrails_default_language", None) if settings else None
+        await _run_async_check(
+            results,
+            "language_match",
+            check_language_match(user_text, reply, default_lang),
+            timeout=5.0,
+        )
 
     # PII check (configurable)
     pii_enabled = settings is None or getattr(settings, "guardrails_pii_check", True)

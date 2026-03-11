@@ -75,7 +75,10 @@ class Settings(BaseSettings):
         "file contents) without reading actual data via tools first. If you only have partial "
         "information (e.g. a directory listing), say what you see and use tools to read key "
         "files (README, config files, package.json, requirements.txt) before making claims. "
-        "If a tool call fails, report the error honestly — do not invent the answer."
+        "If a tool call fails, report the error honestly — do not invent the answer. "
+        "When asked about current events, recent software versions, or news, "
+        "ALWAYS use search or fetch tools. Never answer from memory for time-sensitive topics. "
+        "Always provide a natural language response after using tools — never return an empty message."
     )
     conversation_max_messages: int = 20
 
@@ -136,6 +139,7 @@ class Settings(BaseSettings):
     # Guardrails (Fase 1)
     guardrails_enabled: bool = True
     guardrails_language_check: bool = True
+    guardrails_default_language: str = "es"  # Fallback when user_text too short for detection
     guardrails_pii_check: bool = True
     guardrails_llm_checks: bool = False  # Activar en Iteración 6
     guardrails_llm_timeout: float = 3.0  # segundos; 0.5 era demasiado bajo para qwen3:8b local
