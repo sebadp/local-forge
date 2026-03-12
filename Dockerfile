@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    curl \
     nodejs \
     npm \
     chromium \
@@ -46,5 +47,10 @@ RUN groupadd -g $GID appuser && useradd -u $UID -g $GID -m appuser \
     && mkdir -p /app/data /home/appuser/.cache/huggingface /home/appuser/.npm \
     && chown -R appuser:appuser /app /home/appuser
 USER appuser
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+LABEL org.opencontainers.image.source="https://github.com/sebadp/wasap"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -270,6 +270,92 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_prompt_version ON prompt_versions(prompt_n
 CREATE INDEX IF NOT EXISTS idx_prompt_active ON prompt_versions(prompt_name, is_active);
 """
 
+ONTOLOGY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    ref_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    metadata_json TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(entity_type, ref_id)
+);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+
+CREATE TABLE IF NOT EXISTS entity_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id TEXT NOT NULL REFERENCES entities(id),
+    relation_type TEXT NOT NULL,
+    target_id TEXT NOT NULL REFERENCES entities(id),
+    confidence REAL DEFAULT 1.0,
+    source_trace_id TEXT,
+    metadata_json TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(source_id, relation_type, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_relations_source ON entity_relations(source_id);
+CREATE INDEX IF NOT EXISTS idx_relations_target ON entity_relations(target_id);
+CREATE INDEX IF NOT EXISTS idx_relations_type ON entity_relations(relation_type);
+"""
+
+PROVENANCE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS entity_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    source_trace_id TEXT,
+    before_snapshot TEXT,
+    after_snapshot TEXT,
+    metadata_json TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_entity ON entity_audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON entity_audit_log(actor);
+CREATE INDEX IF NOT EXISTS idx_audit_trace ON entity_audit_log(source_trace_id);
+
+CREATE TABLE IF NOT EXISTS memory_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    source_trace_id TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(memory_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_memver_memory ON memory_versions(memory_id);
+"""
+
+AUTOMATION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS automation_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    condition_type TEXT NOT NULL CHECK(condition_type IN ('query', 'metric', 'schedule')),
+    condition_config TEXT NOT NULL,
+    action_type TEXT NOT NULL CHECK(action_type IN ('notify_user', 'notify_admin', 'run_task', 'log')),
+    action_config TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    cooldown_minutes INTEGER DEFAULT 60,
+    last_triggered_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS automation_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id INTEGER NOT NULL,
+    triggered_at TEXT DEFAULT (datetime('now')),
+    condition_value TEXT,
+    action_result TEXT CHECK(action_result IN ('success', 'failed', 'skipped')),
+    details TEXT,
+    FOREIGN KEY (rule_id) REFERENCES automation_rules(id)
+);
+CREATE INDEX IF NOT EXISTS idx_automation_log_rule ON automation_log(rule_id, triggered_at);
+"""
+
 VEC_SCHEMA_MEMORIES = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories "
     "USING vec0(memory_id INTEGER PRIMARY KEY, embedding float[{dims}])"
@@ -326,6 +412,24 @@ async def init_db(db_path: str, embedding_dims: int = 768) -> tuple[aiosqlite.Co
 
     await conn.executescript(DATASET_SCHEMA)
     await conn.executescript(PROMPT_SCHEMA)
+    await conn.executescript(ONTOLOGY_SCHEMA)
+    await conn.executescript(PROVENANCE_SCHEMA)
+    await conn.executescript(AUTOMATION_SCHEMA)
+
+    # Migrate memories: add source_trace_id column if missing
+    cursor = await conn.execute("PRAGMA table_info(memories)")
+    mem_cols = {row[1] for row in await cursor.fetchall()}
+    if "source_trace_id" not in mem_cols:
+        logger.info("Migrating memories: adding 'source_trace_id' column")
+        await conn.execute("ALTER TABLE memories ADD COLUMN source_trace_id TEXT")
+
+    # Migrate notes: add source_trace_id column if missing
+    cursor = await conn.execute("PRAGMA table_info(notes)")
+    note_cols = {row[1] for row in await cursor.fetchall()}
+    if "source_trace_id" not in note_cols:
+        logger.info("Migrating notes: adding 'source_trace_id' column")
+        await conn.execute("ALTER TABLE notes ADD COLUMN source_trace_id TEXT")
+
     await conn.commit()
 
     # Try to load sqlite-vec

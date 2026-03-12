@@ -34,6 +34,7 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
     "search": ["web_search"],
     "news": ["search_news", "add_news_preference"],
     "notes": ["save_note", "list_notes", "search_notes", "delete_note", "get_note"],
+    "knowledge": ["search_knowledge_graph"],
     "files": [
         "read_file",
         "write_file",
@@ -126,6 +127,8 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
         "update_architecture_rules",
         "update_agent_docs",
     ],
+    "provenance": ["trace_data_origin", "get_entity_history"],
+    "automation": ["list_automation_rules", "toggle_automation_rule", "get_automation_log"],
 }
 
 DEFAULT_CATEGORIES = ["time", "math", "weather", "search", "documentation"]
@@ -135,11 +138,31 @@ DEFAULT_CATEGORIES = ["time", "math", "weather", "search", "documentation"]
 WORKER_TOOL_SETS: dict[str, list[str]] = {
     # Order matters: first categories get priority when max_tools < len(categories).
     # Research/action tools first, introspection tools last.
-    "reader": ["search", "fetch", "github", "files", "news", "notes", "conversation", "debugging"],
+    "reader": [
+        "search",
+        "fetch",
+        "github",
+        "files",
+        "news",
+        "notes",
+        "knowledge",
+        "conversation",
+        "debugging",
+    ],
     "analyzer": ["github", "search", "evaluation", "selfcode", "debugging", "news"],
     "coder": ["selfcode", "shell", "github"],
     "reporter": ["evaluation", "notes", "debugging"],
-    "general": ["search", "fetch", "github", "files", "shell", "selfcode", "notes", "conversation"],
+    "general": [
+        "search",
+        "fetch",
+        "github",
+        "files",
+        "shell",
+        "selfcode",
+        "notes",
+        "knowledge",
+        "conversation",
+    ],
 }
 
 _CLASSIFIER_PROMPT_TEMPLATE = (
@@ -158,7 +181,11 @@ _CLASSIFIER_PROMPT_TEMPLATE = (
     '"programa un cron diario a las 9" → time\n'
     '"agrega una nota al proyecto X" → projects\n'
     '"what are the latest news about AI" → news\n'
-    '"busca informacion sobre Python 3.13" → search\n\n'
+    '"busca informacion sobre Python 3.13" → search\n'
+    '"de donde salió esa memoria" → provenance\n'
+    '"who changed my memories" → provenance\n'
+    '"show automation rules" → automation\n'
+    '"disable the guardrail alert" → automation\n\n'
     "{recent_context}"
     "Message to classify: {user_message}"
 )

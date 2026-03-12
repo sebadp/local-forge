@@ -9,6 +9,7 @@ from app.dependencies import (
     get_command_registry,
     get_conversation_manager,
     get_daily_log,
+    get_entity_registry,
     get_mcp_manager,
     get_memory_file,
     get_ollama_client,
@@ -67,6 +68,7 @@ async def telegram_webhook(
     mcp_manager = get_mcp_manager(request)
     vec_available = get_vec_available(request)
     trace_recorder = get_trace_recorder(request)
+    entity_registry = get_entity_registry(request)
 
     for msg in messages:
         logger.info(
@@ -109,6 +111,7 @@ async def telegram_webhook(
             mcp_manager=mcp_manager,
             vec_available=vec_available,
             trace_recorder=trace_recorder,
+            entity_registry=entity_registry,
         )
 
     return Response(status_code=200)

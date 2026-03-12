@@ -20,6 +20,7 @@ from app.dependencies import (
     get_command_registry,
     get_conversation_manager,
     get_daily_log,
+    get_entity_registry,
     get_mcp_manager,
     get_memory_file,
     get_ollama_client,
@@ -174,6 +175,7 @@ async def incoming_webhook(
     mcp_manager = get_mcp_manager(request)
     vec_available = get_vec_available(request)
     trace_recorder = get_trace_recorder(request)
+    entity_registry = get_entity_registry(request)
 
     for msg in messages:
         logger.info(
@@ -207,6 +209,7 @@ async def incoming_webhook(
             mcp_manager=mcp_manager,
             vec_available=vec_available,
             trace_recorder=trace_recorder,
+            entity_registry=entity_registry,
         )
 
     return Response(status_code=200)
@@ -227,6 +230,7 @@ async def process_message(
     mcp_manager: McpManager | None = None,
     vec_available: bool = False,
     trace_recorder=None,
+    entity_registry: object | None = None,
 ) -> None:
     """WhatsApp-specific wrapper: converts to platform-agnostic types and delegates."""
     incoming = _wa_msg_to_incoming(msg)
@@ -246,6 +250,7 @@ async def process_message(
         mcp_manager=mcp_manager,
         vec_available=vec_available,
         trace_recorder=trace_recorder,
+        entity_registry=entity_registry,
     )
 
 
@@ -264,6 +269,7 @@ async def process_message_generic(
     mcp_manager: McpManager | None = None,
     vec_available: bool = False,
     trace_recorder=None,
+    entity_registry: object | None = None,
 ) -> None:
     """Platform-agnostic message processor. Called by both WA and Telegram routers."""
     # Parallelize initial platform calls (mark-read + typing indicator)
@@ -306,6 +312,7 @@ async def process_message_generic(
             mcp_manager=mcp_manager,
             vec_available=vec_available,
             trace_recorder=trace_recorder,
+            entity_registry=entity_registry,
         )
     finally:
         # Remove typing indicator
@@ -671,6 +678,24 @@ async def _save_self_correction_memory(
         mem_id = await repository.add_memory(note, category="self_correction")
         logger.info("Saved self-correction memory for checks: %s", checks_str)
 
+        # Audit log (best-effort)
+        try:
+            from app.provenance.context import get_audit_logger
+            from app.provenance.models import Action, Actor, EntityType
+
+            _al = get_audit_logger()
+            if _al:
+                await _al.log_mutation(
+                    EntityType.MEMORY,
+                    mem_id,
+                    Action.CREATE,
+                    Actor.SYSTEM,
+                    after_snapshot=note,
+                    metadata={"category": "self_correction", "checks": new_checks},
+                )
+        except Exception:
+            pass
+
         if embed_model and vec_available and ollama_client:
             from app.embeddings.indexer import embed_memory
 
@@ -930,6 +955,16 @@ async def _is_repeated_question(
     return False
 
 
+def _get_cmd_audit_logger():
+    """Get audit logger from module-level context (avoids threading through params)."""
+    try:
+        from app.provenance.context import get_audit_logger
+
+        return get_audit_logger()
+    except Exception:
+        return None
+
+
 async def _handle_message(
     msg: IncomingMessage,
     settings: Settings,
@@ -945,6 +980,7 @@ async def _handle_message(
     mcp_manager: McpManager | None = None,
     vec_available: bool = False,
     trace_recorder=None,
+    entity_registry: object | None = None,
 ) -> None:
     # Handle audio: transcribe to text
     if msg.type == "audio" and msg.media_id:
@@ -1063,6 +1099,7 @@ async def _handle_message(
                 wa_client=platform_client,
                 settings=settings,
                 trace_recorder=trace_recorder,
+                audit_logger=_get_cmd_audit_logger(),
             )
             try:
                 reply = await spec.handler(cmd_args, ctx)
@@ -1167,6 +1204,7 @@ async def _handle_message(
                         settings=settings,
                         daily_log=daily_log,
                         vec_available=vec_available,
+                        entity_registry=entity_registry,
                     ),
                     repository.save_message(conv_id, "user", user_text, msg.message_id),
                 )
@@ -1186,6 +1224,7 @@ async def _handle_message(
                     settings=settings,
                     daily_log=daily_log,
                     vec_available=vec_available,
+                    entity_registry=entity_registry,
                 ),
                 repository.save_message(conv_id, "user", user_text, msg.message_id),
             )
@@ -1402,16 +1441,21 @@ async def _handle_message(
                 log_context_budget_breakdown,
             )
 
+            _budget_model = settings.ollama_model if settings else "default"
             estimated_tokens = log_context_budget(
                 context,
                 extra={"phone": msg.user_id, "categories": pre_classified},
+                model=_budget_model,
             )
             ctx.token_estimate = estimated_tokens
 
             # Breakdown: system_prompt (first message) vs history (rest)
             system_text = context[0].content if context else ""
             history_text = " ".join(m.content or "" for m in context[1:])
-            sections = estimate_sections({"system_prompt": system_text, "history": history_text})
+            sections = estimate_sections(
+                {"system_prompt": system_text, "history": history_text},
+                model=_budget_model,
+            )
             log_context_budget_breakdown(sections)
 
             # Persist context fill rate as trace score (Plan 39 Fase 2)

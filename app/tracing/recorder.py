@@ -20,11 +20,19 @@ class TraceRecorder:
     Use `TraceRecorder.create(repository)` to build the singleton instance at app startup.
     The constructor accepts a pre-initialized Langfuse client (or None) so the singleton
     can be reused across requests without creating a new background-flush thread each time.
+
+    Langfuse v3 API: uses start_span()/start_generation() which return stateful span objects.
+    Active spans are stored in _active_spans (span_id → LangfuseSpan) and root spans are
+    stored in _root_spans (trace_id → LangfuseSpan) for the lifetime of a trace.
     """
 
     def __init__(self, repository, langfuse: Langfuse | None = None) -> None:
         self._repo = repository
         self.langfuse = langfuse
+        # Stateful span storage: our_span_id → LangfuseSpan object
+        self._active_spans: dict[str, Any] = {}
+        # Root spans: our_trace_id → LangfuseSpan (the root span representing the trace)
+        self._root_spans: dict[str, Any] = {}
 
     @classmethod
     def create(cls, repository) -> TraceRecorder:
@@ -36,20 +44,12 @@ class TraceRecorder:
         langfuse: Langfuse | None = None
         if settings.langfuse_public_key and settings.langfuse_secret_key:
             try:
-                # Validate API compatibility — Langfuse v3 removed trace()/span()/generation()
-                if not hasattr(Langfuse, "trace"):
-                    logger.warning(
-                        "Langfuse SDK is incompatible (v3+ detected). "
-                        "Pin langfuse<3.0.0 in requirements.txt. "
-                        "Cloud upload disabled; SQLite tracing still active."
-                    )
-                else:
-                    langfuse = Langfuse(
-                        public_key=settings.langfuse_public_key,
-                        secret_key=settings.langfuse_secret_key,
-                        host=settings.langfuse_host,
-                    )
-                    logger.info("Langfuse tracing enabled")
+                langfuse = Langfuse(
+                    public_key=settings.langfuse_public_key,
+                    secret_key=settings.langfuse_secret_key,
+                    host=settings.langfuse_host,
+                )
+                logger.info("Langfuse tracing enabled")
             except Exception:
                 logger.warning("Failed to initialize Langfuse client", exc_info=True)
         return cls(repository, langfuse)
@@ -65,14 +65,21 @@ class TraceRecorder:
         try:
             await self._repo.save_trace(trace_id, phone_number, input_text, message_type)
             if self.langfuse:
-                self.langfuse.trace(
-                    id=trace_id,
+                # Create deterministic Langfuse trace_id from our UUID (must be 32 hex chars)
+                lf_trace_id = Langfuse.create_trace_id(seed=trace_id)
+                # Create root span representing the trace
+                root_span = self.langfuse.start_span(
+                    trace_context={"trace_id": lf_trace_id},
                     name="interaction",
-                    user_id=phone_number,
-                    session_id=phone_number,  # groups conversations by user in Langfuse Sessions
                     input=input_text,
+                )
+                # Set trace metadata (user, session, platform, etc.)
+                root_span.update_trace(
+                    user_id=phone_number,
+                    session_id=phone_number,
                     metadata={"message_type": message_type, "platform": platform},
                 )
+                self._root_spans[trace_id] = root_span
         except Exception:
             logger.warning("TraceRecorder.start_trace failed", exc_info=True)
 
@@ -86,13 +93,10 @@ class TraceRecorder:
         try:
             await self._repo.finish_trace(trace_id, status, output_text, wa_message_id)
             if self.langfuse:
-                # Langfuse traces don't have a direct "end" state modification like spans,
-                # but we can update the trace with the final output and tags
-                self.langfuse.trace(
-                    id=trace_id,
-                    output=output_text,
-                    tags=[status],
-                )
+                root_span = self._root_spans.pop(trace_id, None)
+                if root_span:
+                    root_span.update_trace(output=output_text, tags=[status])
+                    root_span.end()
                 self.langfuse.flush()
         except Exception:
             logger.warning("TraceRecorder.finish_trace failed", exc_info=True)
@@ -108,20 +112,19 @@ class TraceRecorder:
         try:
             await self._repo.save_trace_span(span_id, trace_id, name, kind, parent_id)
             if self.langfuse:
+                root_span = self._root_spans.get(trace_id)
+                if root_span is None:
+                    return
+                # Get parent span object if there is one
+                parent = self._active_spans.get(parent_id) if parent_id else None
+                if parent is None:
+                    parent = root_span
+                # Create child span under parent
                 if kind == "generation":
-                    self.langfuse.generation(
-                        id=span_id,
-                        trace_id=trace_id,
-                        parent_observation_id=parent_id,
-                        name=name,
-                    )
+                    span = parent.start_generation(name=name)
                 else:
-                    self.langfuse.span(
-                        id=span_id,
-                        trace_id=trace_id,
-                        parent_observation_id=parent_id,
-                        name=name,
-                    )
+                    span = parent.start_span(name=name)
+                self._active_spans[span_id] = span
         except Exception:
             logger.warning("TraceRecorder.start_span failed", exc_info=True)
 
@@ -144,39 +147,31 @@ class TraceRecorder:
                 metadata,
             )
             if self.langfuse:
+                span = self._active_spans.pop(span_id, None)
+                if span is None:
+                    return
                 level = "ERROR" if status == "failed" else "DEFAULT"
                 md = dict(metadata) if metadata else {}
 
                 # Extract OTel GenAI Semantic Conventions if present
-                usage: dict[str, int] = {}
+                usage_details: dict[str, int] = {}
                 in_tokens = md.pop("gen_ai.usage.input_tokens", None)
                 out_tokens = md.pop("gen_ai.usage.output_tokens", None)
                 if in_tokens is not None:
-                    usage["input"] = in_tokens
+                    usage_details["input"] = in_tokens
                 if out_tokens is not None:
-                    usage["output"] = out_tokens
+                    usage_details["output"] = out_tokens
                 model = md.pop("gen_ai.request.model", None)
 
-                # Check what type of observation this was by trying to update context on it
-                # The python SDK requires us to call the right method
-                if usage or model:
-                    self.langfuse.generation(
-                        id=span_id,
-                        output=output_data,
-                        input=input_data,
-                        level=level,
-                        metadata=md,
-                        model=model,
-                        usage=usage,
-                    )
-                else:
-                    self.langfuse.span(
-                        id=span_id,
-                        output=output_data,
-                        input=input_data,
-                        level=level,
-                        metadata=md,
-                    )
+                span.update(
+                    input=input_data,
+                    output=output_data,
+                    level=level,
+                    metadata=md if md else None,
+                    model=model,
+                    usage_details=usage_details if usage_details else None,
+                )
+                span.end()
         except Exception:
             logger.warning("TraceRecorder.finish_span failed", exc_info=True)
 
@@ -192,9 +187,18 @@ class TraceRecorder:
         try:
             await self._repo.save_trace_score(trace_id, name, value, source, comment, span_id)
             if self.langfuse:
-                self.langfuse.score(
-                    trace_id=trace_id,
-                    observation_id=span_id,
+                root_span = self._root_spans.get(trace_id)
+                if root_span is None:
+                    return
+                # Get observation_id if we have the span still active
+                observation_id = None
+                if span_id:
+                    active_span = self._active_spans.get(span_id)
+                    if active_span:
+                        observation_id = active_span.id
+                self.langfuse.create_score(
+                    trace_id=root_span.trace_id,
+                    observation_id=observation_id,
                     name=name,
                     value=value,
                     comment=comment,
@@ -207,7 +211,9 @@ class TraceRecorder:
         if not self.langfuse or not tags:
             return
         try:
-            self.langfuse.trace(id=trace_id, tags=tags)
+            root_span = self._root_spans.get(trace_id)
+            if root_span:
+                root_span.update_trace(tags=tags)
         except Exception:
             logger.warning("TraceRecorder.update_trace_tags failed", exc_info=True)
 

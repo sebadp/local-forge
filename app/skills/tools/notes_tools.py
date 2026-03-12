@@ -27,6 +27,23 @@ def register(
         msg = f"Note saved (ID: {note_id}): {title}"
         logger.info(msg)
 
+        # Audit log (best-effort)
+        try:
+            from app.provenance.context import get_audit_logger
+            from app.provenance.models import Action, Actor, EntityType
+
+            _al = get_audit_logger()
+            if _al:
+                await _al.log_mutation(
+                    EntityType.NOTE,
+                    note_id,
+                    Action.CREATE,
+                    Actor.TOOL,
+                    after_snapshot=f"{title}: {content[:200]}",
+                )
+        except Exception:
+            pass
+
         # Embed the new note (best-effort)
         if ollama_client and embed_model and vec_available:
             from app.embeddings.indexer import embed_note
@@ -93,8 +110,31 @@ def register(
 
     async def delete_note(note_id: int) -> str:
         logger.info(f"Deleting note ID: {note_id}")
+        # Fetch before deleting for audit snapshot
+        _note_before = await repository.get_note(note_id)
         deleted = await repository.delete_note(note_id)
         if deleted:
+            # Audit log (best-effort)
+            try:
+                from app.provenance.context import get_audit_logger
+                from app.provenance.models import Action, Actor, EntityType
+
+                _al = get_audit_logger()
+                if _al:
+                    _snap = (
+                        f"{_note_before.title}: {_note_before.content[:200]}"
+                        if _note_before
+                        else ""
+                    )
+                    await _al.log_mutation(
+                        EntityType.NOTE,
+                        note_id,
+                        Action.DELETE,
+                        Actor.TOOL,
+                        before_snapshot=_snap,
+                    )
+            except Exception:
+                pass
             # Remove embedding (best-effort)
             if vec_available:
                 from app.embeddings.indexer import remove_note_embedding

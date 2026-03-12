@@ -1,8 +1,8 @@
 # Guía de Testing Manual — LocalForge
 
 > **Propósito**: Validación pre-release de todas las features implementadas.
-> **Última actualización**: 2026-02-25
-> **Rama probada**: `feat/autonomy`
+> **Última actualización**: 2026-03-12
+> **Rama probada**: `feat/architecture_plan`
 
 ---
 

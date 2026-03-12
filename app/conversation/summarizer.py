@@ -112,6 +112,24 @@ async def flush_to_memory(
         added_count += 1
         logger.info("Auto-extracted memory: %s", fact[:80])
 
+        # Audit log (best-effort)
+        try:
+            from app.provenance.context import get_audit_logger
+            from app.provenance.models import Action, Actor, EntityType
+
+            _al = get_audit_logger()
+            if _al:
+                await _al.log_mutation(
+                    EntityType.MEMORY,
+                    memory_id,
+                    Action.CREATE,
+                    Actor.LLM_FLUSH,
+                    after_snapshot=fact.strip(),
+                )
+                await _al.version_memory(memory_id, fact.strip(), Actor.LLM_FLUSH)
+        except Exception:
+            pass
+
         # Embed the new fact (best-effort)
         if embed_model:
             try:

@@ -82,7 +82,14 @@ async def test_get_latency_stats_all():
     repo = AsyncMock()
     repo.get_e2e_latency_percentiles = AsyncMock(
         return_value=[
-            {"span": "end_to_end", "n": 143, "p50": 1850.0, "p95": 4200.0, "p99": 6500.0, "max": 8000.0},
+            {
+                "span": "end_to_end",
+                "n": 143,
+                "p50": 1850.0,
+                "p95": 4200.0,
+                "p99": 6500.0,
+                "max": 8000.0,
+            },
         ]
     )
     repo.get_latency_percentiles = AsyncMock(
@@ -123,7 +130,7 @@ async def test_get_latency_stats_specific_span():
     handler = registry._tools["get_latency_stats"].handler
     result = await handler(span_name="guardrails", days=14)
 
-    repo.get_latency_percentiles.assert_called_once_with("guardrails", days=14)
+    repo.get_latency_percentiles.assert_called_once_with("guardrails", days=14, enabled=True)
     assert "guardrails" in result
 
 

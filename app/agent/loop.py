@@ -860,24 +860,66 @@ async def _run_agent_body(
                         await _save_task_results_note(session, repository)
                     except Exception:
                         logger.debug("Could not save agent results note", exc_info=True)
-            except Exception:
-                logger.exception("Planner session failed, falling back to reactive loop")
-                # Fallback to reactive loop
-                system_content = _AGENT_SYSTEM_PROMPT.format(objective=session.objective)
-                system_content = _load_bootstrap_context(system_content)
-                messages: list[ChatMessage] = [
-                    ChatMessage(role="system", content=system_content),
-                    ChatMessage(role="user", content=session.objective),
-                ]
-                reply = await _run_reactive_session(
-                    session=session,
-                    ollama_client=ollama_client,
-                    session_registry=session_registry,
-                    wa_client=wa_client,
-                    mcp_manager=mcp_manager,
-                    hitl_callback=hitl_callback,
-                    messages=messages,
+            except Exception as plan_err:
+                logger.warning(
+                    "Planner session failed (%s), retrying once before fallback", plan_err
                 )
+                try:
+                    # Reset plan state before retry
+                    session.plan = None
+                    session.task_plan = None
+                    reply = await _run_planner_session(
+                        session=session,
+                        ollama_client=ollama_client,
+                        session_registry=session_registry,
+                        wa_client=wa_client,
+                        mcp_manager=mcp_manager,
+                        hitl_callback=hitl_callback,
+                    )
+                    if repository is not None and session.plan:
+                        try:
+                            await _save_task_results_note(session, repository)
+                        except Exception:
+                            logger.debug("Could not save agent results note", exc_info=True)
+                except Exception:
+                    logger.exception("Planner retry failed, falling back to reactive loop")
+                    # Notify user about quality downgrade
+                    try:
+                        await wa_client.send_message(
+                            session.phone_number,
+                            "⚠️ No pude crear un plan estructurado. Continuando en modo reactivo "
+                            "(menos eficiente pero funcional).",
+                        )
+                    except Exception:
+                        pass
+                    # Track downgrade in tracing
+                    _trace = get_current_trace()
+                    if _trace:
+                        try:
+                            await _trace.add_score(
+                                name="planner_downgrade",
+                                value=1.0,
+                                source="system",
+                                comment="Fallback to reactive after planner failure (retry exhausted)",
+                            )
+                        except Exception:
+                            pass
+                    # Fallback to reactive loop
+                    system_content = _AGENT_SYSTEM_PROMPT.format(objective=session.objective)
+                    system_content = _load_bootstrap_context(system_content)
+                    messages: list[ChatMessage] = [
+                        ChatMessage(role="system", content=system_content),
+                        ChatMessage(role="user", content=session.objective),
+                    ]
+                    reply = await _run_reactive_session(
+                        session=session,
+                        ollama_client=ollama_client,
+                        session_registry=session_registry,
+                        wa_client=wa_client,
+                        mcp_manager=mcp_manager,
+                        hitl_callback=hitl_callback,
+                        messages=messages,
+                    )
         else:
             system_content = _AGENT_SYSTEM_PROMPT.format(objective=session.objective)
             system_content = _load_bootstrap_context(system_content)

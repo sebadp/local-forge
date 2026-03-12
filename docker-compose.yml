@@ -12,6 +12,13 @@ services:
       - ollama
     network_mode: host
     restart: unless-stopped
+    profiles: ["dev", "prod"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
 
   ollama:
     image: ollama/ollama
@@ -21,6 +28,7 @@ services:
       - OLLAMA_HOST=0.0.0.0:11435
     network_mode: host
     restart: unless-stopped
+    profiles: ["dev"]
 
   ngrok:
     image: ngrok/ngrok
@@ -31,6 +39,7 @@ services:
     depends_on:
       - localforge
     restart: unless-stopped
+    profiles: ["dev"]
 
   langfuse-server:
     image: langfuse/langfuse:2
@@ -46,6 +55,7 @@ services:
       - NEXTAUTH_URL=http://localhost:3000
       - TELEMETRY_ENABLED=false
     restart: always
+    profiles: ["dev", "prod"]
 
   langfuse-db:
     image: postgres:15
@@ -63,6 +73,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 5
+    profiles: ["dev", "prod"]
 
 volumes:
   ollama_data:

@@ -48,6 +48,22 @@ def register(
         project_id = await repository.create_project(phone, name, description)
         await repository.log_project_activity(project_id, "created", description)
         logger.info("Created project '%s' (id=%d) for %s", name, project_id, phone)
+        # Audit log (best-effort)
+        try:
+            from app.provenance.context import get_audit_logger
+            from app.provenance.models import Action, Actor, EntityType
+
+            _al = get_audit_logger()
+            if _al:
+                await _al.log_mutation(
+                    EntityType.PROJECT,
+                    project_id,
+                    Action.CREATE,
+                    Actor.TOOL,
+                    after_snapshot=f"{name}: {description[:200]}",
+                )
+        except Exception:
+            pass
         return f"Project '{name}' created (ID: {project_id})."
 
     async def list_projects(status: str = "active") -> str:
@@ -242,6 +258,23 @@ def register(
         note_id = await repository.add_project_note(project_id, content, title=note_title)
         activity_detail = f"{note_title}: {content[:60]}" if note_title else content[:80]
         await repository.log_project_activity(project_id, "note_added", activity_detail)
+        # Audit log (best-effort)
+        try:
+            from app.provenance.context import get_audit_logger
+            from app.provenance.models import Action, Actor, EntityType
+
+            _al = get_audit_logger()
+            if _al:
+                await _al.log_mutation(
+                    EntityType.PROJECT_NOTE,
+                    note_id,
+                    Action.CREATE,
+                    Actor.TOOL,
+                    after_snapshot=activity_detail,
+                    metadata={"project_id": project_id, "project_name": pname},
+                )
+        except Exception:
+            pass
         # Embed best-effort
         if ollama_client and embed_model and vec_available:
             from app.embeddings.indexer import embed_project_note
