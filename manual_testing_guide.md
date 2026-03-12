@@ -25,10 +25,15 @@ Confirmar estas líneas antes de testear cualquier feature:
 | `Scheduler started` | APScheduler activo |
 | `Restored N cron jobs from database` | Cron jobs persistidos re-registrados |
 | `Model warmup complete` | qwen3:8b y nomic-embed-text calientes |
+| `Entity registry initialized, backfilling...` | Ontology graph activo |
+| `Automation: seeded N rules, scheduler job registered` | Automation engine activo |
+| `Telegram webhook registered` | Telegram bot conectado (si habilitado) |
+| `Provenance audit logger initialized` | Data provenance activo |
+| `Token estimator calibrated` | Token accuracy calibrado |
 
 **Verificar tests automatizados:**
 ```bash
-make check   # lint + typecheck + 441 tests
+make check   # lint + typecheck + 785 tests
 ```
 
 ---
@@ -567,6 +572,257 @@ grep "Graceful shutdown\|Waiting for.*in-flight" data/localforge.log | tail -5
 | MCP no conectado | Deshabilitar servidor en `mcp_servers.json` | Tools de ese servidor no disponibles, resto funciona |
 | Ambos fetch servers desactivados | Deshabilitar puppeteer + mcp-fetch | LLM informa que no puede acceder a URLs |
 | DuckDuckGo rate limit | Múltiples búsquedas seguidas | `Error performing search: ...` — no crash |
+| `ONTOLOGY_ENABLED=false` | `.env` + restart | Sin knowledge graph, sin enrichment — tools de ontology no registrados |
+| `PROVENANCE_ENABLED=false` | `.env` + restart | Sin audit log ni versioning — mutaciones se hacen sin registrar |
+| `AUTOMATION_ENABLED=false` | `.env` + restart | Sin evaluación periódica de reglas — tools de automation no registrados |
+| `TELEGRAM_ENABLED=false` | `.env` + restart | Sin webhook Telegram — solo WhatsApp activo |
+| Langfuse no disponible | Detener Langfuse server | Traces guardados solo en SQLite, sin crash |
+
+---
+
+## 21. Prompt Engineering & Versioning (Plan 32)
+
+### 21a. Ver prompts activos
+
+| Mensaje / Comando | Esperado |
+|---|---|
+| `/prompts` | Lista de todos los prompts con versión activa |
+| `/prompts system` | Contenido del prompt "system" (600 chars) + historial de versiones |
+| `/prompts system 2` | Contenido completo de la versión 2 (800 chars) |
+
+### 21b. Evolución de prompts
+
+| Paso | Mensaje | Esperado |
+|---|---|---|
+| Proponer | `/agent Proponé un cambio al prompt "classifier" para mejorar la clasificación de proyectos` | `propose_prompt_change(...)` → nueva versión guardada |
+| Aprobar | `/approve-prompt classifier 2` | Score advisory mostrado + prompt activado |
+
+### 21c. Eval acoplado
+
+```bash
+sqlite3 data/localforge.db "SELECT prompt_name, version, is_active, created_by FROM prompt_versions ORDER BY id DESC LIMIT 5;"
+```
+
+---
+
+## 22. Telegram Integration (Plan 35)
+
+**Requisito**: `TELEGRAM_BOT_TOKEN` y `TELEGRAM_ENABLED=true` en `.env`
+
+### 22a. Recepción de mensajes
+
+| Acción | Esperado |
+|---|---|
+| Enviar mensaje de texto al bot | Respuesta del LLM, identificado como `tg_<chat_id>` |
+| Enviar audio al bot | Transcripción via faster-whisper → respuesta |
+| Enviar imagen | Vision via llava:7b → respuesta contextual |
+
+### 22b. Comandos slash
+
+| Comando | Esperado |
+|---|---|
+| `/remember Dato de Telegram` | Memoria guardada, identificada por `tg_<chat_id>` |
+| `/memories` | Mismas memorias que por WhatsApp (si mismo phone pattern) |
+| `/help` | Lista de comandos formateada en HTML (no Markdown) |
+
+### 22c. Recordatorios cross-platform
+
+1. Desde Telegram: `Recordame en 2 minutos que revise el deploy`
+2. **Esperado**: el reminder llega por Telegram (enrutado via prefijo `tg_`)
+
+### 22d. Formato de respuestas
+
+**Verificar** que el bot usa HTML tags (`<b>`, `<i>`, `<code>`) en vez de Markdown (`**`, `*`, `` ` ``):
+```bash
+grep "telegram.*send_message\|HTML" data/localforge.log | tail -5
+```
+
+---
+
+## 23. Ontology / Knowledge Graph (Plan 42)
+
+**Requisito**: `ONTOLOGY_ENABLED=true` (default)
+
+### 23a. Entidades auto-registradas
+
+```bash
+sqlite3 data/localforge.db "SELECT type, name, ref_id FROM entities ORDER BY id DESC LIMIT 10;"
+# Debe mostrar entidades tipo: memory, note, project, topic
+```
+
+### 23b. Relaciones
+
+```bash
+sqlite3 data/localforge.db "
+  SELECT e1.name, r.relation_type, e2.name
+  FROM entity_relations r
+  JOIN entities e1 ON r.source_id = e1.id
+  JOIN entities e2 ON r.target_id = e2.id
+  LIMIT 10;
+"
+# Esperado: relaciones como memory→HAS_TOPIC→topic, project→CONTAINS→task
+```
+
+### 23c. Tool de búsqueda en grafo
+
+| Mensaje | Esperado |
+|---|---|
+| `Qué sabés sobre el proyecto Backend API? Mostrá el grafo` | `search_knowledge_graph(...)` → entidades y relaciones conectadas |
+
+### 23d. Backfill CLI
+
+```bash
+python scripts/backfill_ontology.py --db data/localforge.db
+# Debe indexar entidades existentes sin duplicados
+```
+
+---
+
+## 24. Data Provenance & Lineage (Plan 44)
+
+**Requisito**: `PROVENANCE_ENABLED=true` (default)
+
+### 24a. Audit log de mutaciones
+
+```bash
+sqlite3 data/localforge.db "
+  SELECT action, entity_type, entity_id, actor, created_at
+  FROM entity_audit_log ORDER BY id DESC LIMIT 10;
+"
+# Esperado: acciones CREATE/UPDATE/DELETE con actor (user, llm_flush, tool, etc.)
+```
+
+### 24b. Historial de versiones de memorias
+
+```bash
+sqlite3 data/localforge.db "
+  SELECT memory_id, version, content, changed_by
+  FROM memory_versions ORDER BY id DESC LIMIT 5;
+"
+```
+
+### 24c. Tools de provenance
+
+| Mensaje | Esperado |
+|---|---|
+| `De dónde salió la memoria sobre mi cumpleaños?` | `trace_data_origin(...)` → actor, timestamp, trace_id |
+| `Mostrá el historial de cambios de mis memorias` | `get_entity_history(...)` → lista cronológica de mutaciones |
+
+---
+
+## 25. Deployment Maturity (Plan 46)
+
+### 25a. Health endpoints
+
+| Endpoint | Esperado |
+|---|---|
+| `GET /healthz` | `{"status": "ok"}` (liveness) |
+| `GET /readyz` | `{"status": "ready", ...}` con checks de DB, Ollama, embeddings |
+
+```bash
+curl -s http://localhost:8000/healthz | jq .
+curl -s http://localhost:8000/readyz | jq .
+```
+
+### 25b. Docker healthcheck
+
+```bash
+docker inspect localforge --format='{{.State.Health.Status}}'
+# Esperado: "healthy"
+```
+
+### 25c. Compose profiles
+
+```bash
+docker compose --profile monitoring up -d  # Incluye Grafana/Prometheus si configurados
+docker compose --profile dev up -d         # Incluye hot-reload
+```
+
+---
+
+## 26. Operational Automation (Plan 47)
+
+**Requisito**: `AUTOMATION_ENABLED=true` en `.env`
+
+### 26a. Reglas builtin
+
+```bash
+sqlite3 data/localforge.db "SELECT name, description, enabled, cooldown_minutes FROM automation_rules;"
+# Debe mostrar 5 reglas: project_inactive, guardrail_degraded, embeddings_desync, db_large, consolidation_pending
+```
+
+### 26b. Tools de automation
+
+| Mensaje | Esperado |
+|---|---|
+| `Mostrá las reglas de automatización` | `list_automation_rules()` → tabla con nombre, tipo, estado |
+| `Deshabilitá la regla guardrail_degraded` | `toggle_automation_rule("guardrail_degraded", false)` → confirmación |
+| `Mostrá el log de automatización` | `get_automation_log()` → últimas ejecuciones |
+
+### 26c. Evaluación periódica
+
+```bash
+grep "Automation.*triggered\|evaluate_rules\|rule.*cooldown" data/localforge.log | tail -10
+# Esperado: evaluación cada AUTOMATION_INTERVAL_MINUTES (default 15)
+```
+
+### 26d. Acciones de self-healing
+
+- **embeddings_desync**: si >10 memorias sin embedding → auto-backfill
+- **db_large**: si DB >500MB → auto-VACUUM
+- **consolidation_pending**: si >30 memorias viejas → auto-consolidación
+
+```bash
+grep "run_task\|backfill\|vacuum\|consolidat" data/localforge.log | tail -5
+```
+
+---
+
+## 27. Metrics & Benchmarking (Plans 38-39)
+
+### 27a. Agent stats
+
+| Mensaje | Esperado |
+|---|---|
+| `/agent Mostrá estadísticas de los últimos 7 días` | `get_agent_stats(days=7)` → tool efficiency, token consumption, context quality |
+
+### 27b. Latency stats
+
+| Mensaje | Esperado |
+|---|---|
+| `Mostrá las latencias p50/p95 del sistema` | `get_latency_stats()` → percentiles por span |
+
+### 27c. Dashboard HTML
+
+```bash
+python scripts/dashboard.py --db data/localforge.db --output reports/dashboard.html
+# Abre reports/dashboard.html en browser — secciones: summary, guardrails, latencias, tools, tokens, context
+```
+
+### 27d. Baseline benchmark
+
+```bash
+python scripts/baseline.py --db data/localforge.db
+# Muestra: trace count, avg latency, guardrail pass rate, eval dataset size, tool metrics
+```
+
+---
+
+## 28. Token Accuracy (Plan 45)
+
+### 28a. Calibración runtime
+
+```bash
+grep "token.*calibrat\|EMA.*update" data/localforge.log | tail -5
+# Esperado: calibración periódica basada en respuestas reales de Ollama
+```
+
+### 28b. Estimación de contexto
+
+```bash
+grep "token_breakdown\|context_budget\|largest_section" data/localforge.log | tail -5
+# Esperado: INFO con breakdown por sección (memories, notes, projects, etc.)
+```
 
 ---
 
@@ -593,6 +849,21 @@ grep "PolicyEngine\|AuditTrail\|HITL\|blocked_by_policy" data/localforge.log | t
 
 # Cron jobs
 grep "cron\|CronTrigger\|Restored" data/localforge.log | tail -5
+
+# Ontology / Knowledge Graph
+grep "entity_registry\|ontology\|backfill.*entit" data/localforge.log | tail -5
+
+# Data Provenance
+grep "audit_log\|provenance\|memory_version" data/localforge.log | tail -5
+
+# Automation
+grep "Automation\|evaluate_rules\|rule.*triggered\|cooldown" data/localforge.log | tail -10
+
+# Telegram
+grep "telegram\|tg_\|TelegramClient" data/localforge.log | tail -5
+
+# Token estimation
+grep "token_breakdown\|context_budget\|calibrat" data/localforge.log | tail -5
 
 # Errores
 grep -i "error\|exception\|traceback" data/localforge.log | tail -20
@@ -671,9 +942,48 @@ Marcar cada ítem antes de declarar la rama lista para merge/release:
 - [ ] Reacciones (👍/👎) guardan scores con `source='user'`
 - [ ] `eval_dataset` acumula entradas (failure + golden_candidate)
 
+### Prompt Engineering (Plan 32)
+- [ ] `/prompts` lista prompts activos
+- [ ] `/approve-prompt` activa nueva versión con score advisory
+- [ ] `prompt_versions` tabla con historial
+
+### Telegram (Plan 35)
+- [ ] Mensajes de texto recibidos y respondidos via Telegram
+- [ ] Recordatorios enrutados correctamente por prefijo `tg_`
+- [ ] Formato HTML (no Markdown) en respuestas Telegram
+
+### Ontology (Plan 42)
+- [ ] Entidades auto-registradas en tabla `entities`
+- [ ] Relaciones creadas en `entity_relations`
+- [ ] `search_knowledge_graph` retorna grafo conectado
+- [ ] Backfill CLI funciona sin duplicados
+
+### Data Provenance (Plan 44)
+- [ ] `entity_audit_log` registra CREATE/UPDATE/DELETE con actor
+- [ ] `memory_versions` mantiene historial
+- [ ] `trace_data_origin` y `get_entity_history` tools funcionan
+
+### Deployment Maturity (Plan 46)
+- [ ] `/healthz` retorna 200
+- [ ] `/readyz` retorna status con checks de DB y Ollama
+- [ ] Docker healthcheck muestra "healthy"
+
+### Operational Automation (Plan 47)
+- [ ] 5 reglas builtin seeded en DB al startup
+- [ ] `list_automation_rules` / `toggle_automation_rule` / `get_automation_log` tools funcionan
+- [ ] Evaluación periódica corre según intervalo configurado
+- [ ] Cooldown previene re-triggers prematuros
+
+### Metrics & Token Accuracy (Plans 38-39, 45)
+- [ ] `get_agent_stats` retorna métricas de tools, tokens, context
+- [ ] `get_latency_stats` retorna percentiles
+- [ ] `scripts/dashboard.py` genera HTML válido
+- [ ] Token breakdown logueado en cada request
+
 ### Graceful degradation
 - [ ] Sin nomic-embed-text: app funciona con fallback
 - [ ] Sin fetch servers: LLM informa sin crash
+- [ ] Features opcionales (ontology, provenance, automation, telegram) se desactivan sin crash
 - [ ] `make check` pasa: 0 errores de lint, typecheck, tests
 
 ---
@@ -691,3 +1001,9 @@ Marcar cada ítem antes de declarar la rama lista para merge/release:
 | `think` visible en respuestas con tools | Bug: `think=True` con tools activo | Verificar `chat_with_tools()` en `llm/client.py` |
 | HITL no llega por WA | Token de WA expirado o número incorrecto | Verificar `.env` y logs de WhatsApp client |
 | Hash chain roto en audit trail | Corrupción del JSONL | Investigar; NO borrar el archivo (evidencia) |
+| Automation rules no se disparan | Cooldown activo o `AUTOMATION_ENABLED=false` | Verificar `last_triggered_at` y cooldown en DB |
+| Telegram no recibe mensajes | Token inválido o webhook no registrado | Verificar `TELEGRAM_BOT_TOKEN` y logs de startup |
+| Ontology backfill lento | Muchas entidades existentes | Normal en primera ejecución, idempotente |
+| Provenance audit log vacío | `PROVENANCE_ENABLED=false` | Activar en `.env` + restart |
+| Token budget WARNING >80% | Contexto demasiado largo | Revisar `memory_similarity_threshold`, reducir `history_verbatim_count` |
+| `/healthz` retorna 503 | App no terminó de iniciar | Esperar warmup completo, verificar logs |
