@@ -8,8 +8,6 @@ services:
       - ./skills:/app/skills
       - whisper_cache:/home/appuser/.cache/huggingface
       - npm_cache:/home/appuser/.npm
-    depends_on:
-      - ollama
     network_mode: host
     restart: unless-stopped
     profiles: ["dev", "prod"]

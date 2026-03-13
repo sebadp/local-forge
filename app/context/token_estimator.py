@@ -31,6 +31,10 @@ def calibrate(model: str, char_count: int, actual_tokens: int) -> None:
     if actual_tokens <= 0 or char_count <= 0:
         return
     observed_ratio = char_count / actual_tokens
+    # Clamp to plausible BPE range (2–6 chars/token) to prevent corruption
+    if observed_ratio < 2.0 or observed_ratio > 6.0:
+        logger.debug("token.calibration: skipping outlier ratio=%.3f for %s", observed_ratio, model)
+        return
     old_ratio = _token_ratios.get(model)
     if old_ratio is not None:
         _token_ratios[model] = _EMA_ALPHA * observed_ratio + (1 - _EMA_ALPHA) * old_ratio

@@ -156,6 +156,7 @@ def _action_log(rule: AutomationRule, condition_value: str) -> str:
     cfg = rule.action_config
     message = cfg.get("message", f"Rule {rule.name} triggered: {condition_value}")
     level = cfg.get("level", "warning")
-    log_fn = getattr(logger, level, logger.warning)
+    _VALID_LEVELS = {"debug", "info", "warning", "error", "critical"}
+    log_fn = getattr(logger, level) if level in _VALID_LEVELS else logger.warning
     log_fn("Automation [%s]: %s", rule.name, message)
     return f"logged:{level}"

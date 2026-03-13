@@ -114,7 +114,7 @@ class EntityRegistry:
             )
             await self._conn.commit()
         except Exception:
-            logger.debug("add_relation failed (best-effort)", exc_info=True)
+            logger.warning("add_relation failed (best-effort)", exc_info=True)
 
     async def get_neighbors(
         self, entity_id: str, relation_types: list[str] | None = None, limit: int = 20
@@ -159,7 +159,7 @@ class EntityRegistry:
             )
             rows = await cursor.fetchall()
             results.extend((r[0], r[1], "in") for r in rows)
-        return results
+        return results[:limit]
 
     async def search_entities(
         self, query: str, entity_types: list[str] | None = None, limit: int = 10

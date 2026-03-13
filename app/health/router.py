@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.models import HealthResponse, ReadinessChecks, ReadinessResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -21,15 +25,17 @@ async def ready(request: Request) -> JSONResponse:
     try:
         await request.app.state.repository.ping()
         checks["db"] = "ok"
-    except Exception as e:
-        checks["db"] = f"error: {e}"
+    except Exception:
+        logger.warning("Readiness check: DB failed", exc_info=True)
+        checks["db"] = "error: unavailable"
 
     # Ollama check
     try:
         available = await request.app.state.ollama_client.is_available()
         checks["ollama"] = "ok" if available else "error: not responding"
-    except Exception as e:
-        checks["ollama"] = f"error: {e}"
+    except Exception:
+        logger.warning("Readiness check: Ollama failed", exc_info=True)
+        checks["ollama"] = "error: unavailable"
 
     all_ok = all(v == "ok" for v in checks.values())
     resp = ReadinessResponse(

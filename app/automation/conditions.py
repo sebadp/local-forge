@@ -53,10 +53,16 @@ async def check_condition(rule: AutomationRule, repository: Repository) -> tuple
 async def _check_query(rule: AutomationRule, repository: Repository) -> tuple[bool, str]:
     cfg = rule.condition_config
     sql = cfg.get("sql", "")
-    # Security: only allow SELECT
-    if not sql.strip().upper().startswith("SELECT"):
+    # Security: only allow safe SELECT queries
+    upper_sql = sql.strip().upper()
+    if not upper_sql.startswith("SELECT"):
         logger.warning("Rejected non-SELECT query in rule %s: %s", rule.name, sql[:80])
         return False, "rejected_non_select"
+    _FORBIDDEN = ["ATTACH", "PRAGMA", "LOAD_EXTENSION", ";", "INTO"]
+    for token in _FORBIDDEN:
+        if token in upper_sql:
+            logger.warning("Rejected unsafe SQL token '%s' in rule %s", token, rule.name)
+            return False, f"rejected_unsafe:{token}"
 
     cursor = await repository.conn.execute(sql)
     row = await cursor.fetchone()
@@ -179,12 +185,16 @@ def _check_schedule(rule: AutomationRule) -> tuple[bool, str]:
             return False, "invalid_cron"
 
         now = datetime.now(UTC)
-        minute, hour = parts[0], parts[1]
+        minute, hour, dom, month, dow = parts[0], parts[1], parts[2], parts[3], parts[4]
 
         minute_match = minute == "*" or int(minute) == now.minute
         hour_match = hour == "*" or int(hour) == now.hour
+        dom_match = dom == "*" or int(dom) == now.day
+        month_match = month == "*" or int(month) == now.month
+        # dow: 0=Monday in Python isoweekday()-1, cron uses 0=Sunday
+        dow_match = dow == "*" or int(dow) == now.isoweekday() % 7
 
-        met = minute_match and hour_match
+        met = minute_match and hour_match and dom_match and month_match and dow_match
         return met, f"cron={cron_expr} now={now.hour:02d}:{now.minute:02d}"
     except (ValueError, IndexError):
         return False, f"parse_error:{cron_expr}"

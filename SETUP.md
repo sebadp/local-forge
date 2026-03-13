@@ -33,8 +33,9 @@ sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart doc
 
 Vas a necesitar:
 - `NGROK_AUTHTOKEN` = el authtoken
+- `NGROK_DOMAIN` = tu dominio ngrok (ej: `mi-app.ngrok-free.app`)
 
-> **Nota:** Con el plan free, ngrok asigna una URL random cada vez que se reinicia el servicio. Esto implica reconfigurar el webhook en Meta después de cada restart. Si necesitás una URL fija, podés crear un dominio estático en **Universal Gateway > Domains** (requiere plan pago o dominio free limitado).
+> **Nota:** Con el plan free, podés crear un dominio estático gratuito en **Universal Gateway > Domains**. Esto evita tener que reconfigurar el webhook en Meta después de cada restart. Si no configurás un dominio fijo, ngrok asigna una URL random cada vez.
 
 ---
 
@@ -102,29 +103,28 @@ cd localforge
 cp .env.example .env
 ```
 
-Editar `.env` con los valores obtenidos:
+Editar `.env` con los valores obtenidos. Los valores mínimos obligatorios:
 
 ```env
+# === WhatsApp Cloud API ===
 WHATSAPP_ACCESS_TOKEN=EAAxxxxxxx...
 WHATSAPP_PHONE_NUMBER_ID=123456789012345
 WHATSAPP_VERIFY_TOKEN=mi_token_secreto_123
 WHATSAPP_APP_SECRET=abcdef1234567890
-
 ALLOWED_PHONE_NUMBERS=5491112345678
 
-OLLAMA_BASE_URL=http://ollama:11434
+# === Ollama ===
+OLLAMA_BASE_URL=http://localhost:11435
 OLLAMA_MODEL=qwen3:8b
-SYSTEM_PROMPT=You are a helpful personal assistant on WhatsApp. Be concise and friendly. Answer in the same language the user writes in.
-CONVERSATION_MAX_MESSAGES=20
 
+# === ngrok ===
 NGROK_AUTHTOKEN=2xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-LOG_LEVEL=INFO
-
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=http://localhost:3000
+NGROK_DOMAIN=tu-dominio.ngrok-free.app
 ```
+
+> **Importante:** El compose usa `network_mode: host` y Ollama escucha en el puerto **11435** (no el default 11434). Por eso `OLLAMA_BASE_URL` debe ser `http://localhost:11435`.
+
+El `.env.example` incluye todas las variables opcionales (guardrails, tracing, agent mode, Telegram, etc.). Revisalo para personalizar tu setup.
 
 ### 3.1 Configurar Langfuse (Tracing)
 
@@ -208,7 +208,7 @@ Respuesta esperada: `{"ok":true,"result":true,"description":"Webhook was set"}`
 Para que solo vos puedas usar el bot, obtené tu chat ID enviando cualquier mensaje al bot y revisando los logs:
 
 ```bash
-docker compose logs -f localforge | grep "tg_"
+docker compose --profile dev logs -f localforge | grep "tg_"
 ```
 
 Vas a ver algo como `tg_123456789`. Copiá el número y agregalo al `.env`:
@@ -217,7 +217,7 @@ Vas a ver algo como `tg_123456789`. Copiá el número y agregalo al `.env`:
 ALLOWED_TELEGRAM_CHAT_IDS=123456789
 ```
 
-Reiniciá para aplicar: `docker compose restart localforge`
+Reiniciá para aplicar: `docker compose --profile dev restart localforge`
 
 ### 4.5 — Verificar
 
@@ -233,29 +233,38 @@ Reiniciá para aplicar: `docker compose restart localforge`
 
 ## Paso 5: Levantar los servicios
 
+El stack usa **Docker Compose profiles** para separar entornos:
+
+| Profile | Servicios incluidos | Cuándo usar |
+|---------|-------------------|-------------|
+| `dev` | localforge + ollama + ngrok + langfuse | Desarrollo local (todo incluido) |
+| `prod` | localforge + langfuse | Producción (Ollama y túnel son externos) |
+
+> **Importante:** Siempre hay que especificar `--profile`. Sin profile, Docker Compose no selecciona ningún servicio y dice "no service selected".
+
 ### Sin GPU (CPU only)
 
 ```bash
-docker compose up -d
+docker compose --profile dev up -d
 ```
 
 ### Con GPU NVIDIA
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile dev up -d
 ```
 
 ### Descargar los modelos
 
 ```bash
 # Chat (obligatorio)
-docker compose exec ollama ollama pull qwen3:8b
+docker compose --profile dev exec ollama ollama pull qwen3:8b
 
 # Vision (para imágenes)
-docker compose exec ollama ollama pull llava:7b
+docker compose --profile dev exec ollama ollama pull llava:7b
 
 # Embeddings (para búsqueda semántica)
-docker compose exec ollama ollama pull nomic-embed-text
+docker compose --profile dev exec ollama ollama pull nomic-embed-text
 ```
 
 Esto descarga ~6GB en total. Solo se hace la primera vez (queda persistido en el volume `ollama_data`).
@@ -266,39 +275,48 @@ Esto descarga ~6GB en total. Solo se hace la primera vez (queda persistido en el
 
 ```bash
 # Ver estado de los containers
-docker compose ps
+docker compose --profile dev ps
 
-# Verificar health check
+# Liveness check (proceso vivo)
 curl http://localhost:8000/health
 ```
 
 Respuesta esperada:
 ```json
-{"status":"ok","checks":{"available":true}}
+{"status":"ok"}
 ```
 
-Si Ollama todavía está descargando el modelo, `available` va a ser `true` pero el modelo no va a responder hasta que termine el pull. Si el check da `"available": false`, verificá que el container de Ollama esté corriendo (`docker compose logs ollama`).
+```bash
+# Readiness check (DB + Ollama respondiendo)
+curl http://localhost:8000/ready
+```
+
+Respuesta esperada:
+```json
+{"status":"ok","checks":{"db":"ok","ollama":"ok"}}
+```
+
+Si Ollama todavía está descargando el modelo, `/ready` puede dar `"ollama": "error: not responding"` (HTTP 503). Esperá a que termine el pull. `/health` siempre da 200 si el proceso está vivo.
 
 ### Verificar ngrok
 
 ```bash
-docker compose logs ngrok
+docker compose --profile dev logs ngrok
 ```
 
-Deberías ver algo como:
+Si configuraste `NGROK_DOMAIN` en `.env`, deberías ver:
 ```
-t=... lvl=info msg="started tunnel" ... url=https://xxxx-xx-xx.ngrok-free.app
+t=... lvl=info msg="started tunnel" ... url=https://tu-dominio.ngrok-free.app
 ```
-
-Copiar esa URL, la vas a necesitar para el paso siguiente.
 
 ### Verificar Langfuse (Observabilidad)
 
 El stack incluye un servidor local de Langfuse para ver las trazas de ejecución.
 1. Ingresá a `http://localhost:3000`
 2. Si es la primera vez, creá una cuenta local (los datos quedan en tu máquina).
-3. Entrá a Settings -> API Keys, generá un par nuevo y pegalos en tu `.env`.
-4. Reiniciá el asistente: `docker compose restart localforge`
+3. Creá un nuevo "Project" (ej. "LocalForge").
+4. Entrá a Settings -> API Keys, generá un par nuevo y pegalos en tu `.env`.
+5. Reiniciá el asistente: `docker compose --profile dev restart localforge`
 
 ---
 
@@ -312,8 +330,8 @@ El stack incluye un servidor local de Langfuse para ver las trazas de ejecución
 4. Clickear **"Verify and Save"**
 
 Si todo está bien, Meta envía un GET a tu webhook, recibe el challenge de vuelta, y guarda la configuración. Si falla, revisá:
-- Que los 3 containers estén corriendo (`docker compose ps`)
-- Que ngrok esté conectado (`docker compose logs ngrok`)
+- Que los containers estén corriendo (`docker compose --profile dev ps`)
+- Que ngrok esté conectado (`docker compose --profile dev logs ngrok`)
 - Que el verify token coincida exactamente
 - Que la URL sea correcta (con `https://` y `/webhook` al final)
 
@@ -333,7 +351,7 @@ Si todo está bien, Meta envía un GET a tu webhook, recibe el challenge de vuel
 ### Ver logs en tiempo real
 
 ```bash
-docker compose logs -f localforge
+docker compose --profile dev logs -f localforge
 ```
 
 Deberías ver el flujo:
@@ -359,14 +377,15 @@ Una vez que el chat funciona, probá los comandos:
    sqlite3 data/localforge.db "SELECT * FROM memories;"
    ```
 2. Verificar que `data/MEMORY.md` refleja las memorias guardadas
-3. Reiniciar la app (`docker compose restart localforge`) y verificar que el historial y memorias persisten
+3. Reiniciar la app (`docker compose --profile dev restart localforge`) y verificar que el historial y memorias persisten
 
 ### Troubleshooting
 
 | Problema | Causa probable | Solución |
 |---|---|---|
-| No llegan mensajes al webhook | Webhook no configurado o ngrok caído | Verificar `docker compose logs ngrok` y config en Meta |
-| `"available": false` en /health | Ollama no está corriendo | `docker compose logs ollama`, verificar que el container esté up |
+| "no service selected" | Falta `--profile` en el comando | Agregar `--profile dev` o `--profile prod` |
+| No llegan mensajes al webhook | Webhook no configurado o ngrok caído | Verificar `docker compose --profile dev logs ngrok` y config en Meta |
+| `/ready` da `"ollama": "error"` | Ollama no está corriendo | `docker compose --profile dev logs ollama`, verificar que el container esté up |
 | Respuesta muy lenta (>60s) | CPU sin GPU, modelo grande | Usar modelo más chico: `OLLAMA_MODEL=qwen3:4b` |
 | Error 403 en webhook verify | Verify token no coincide | Comparar `.env` con lo puesto en Meta |
 | Mensaje no se responde | Número no en whitelist | Verificar `ALLOWED_PHONE_NUMBERS` en `.env` |
@@ -375,8 +394,8 @@ Una vez que el chat funciona, probá los comandos:
 | Error 131030 "Recipient not in allowed list" | Número no registrado como destinatario de prueba en Meta | Agregar número en API Setup > "Manage phone number list" |
 | Error 401 Unauthorized | Access token expirado | Generar nuevo token en API Setup o usar token permanente (ver abajo) |
 | Error 400 "permission" | Token sin permisos correctos | Verificar que el System User tenga `whatsapp_business_messaging` |
-| Ollama 404 "model not found" | Modelo no descargado | `docker compose exec ollama ollama pull <modelo>` |
-| Docker build falla con "Temporary failure resolving" | DNS no funciona dentro de Docker (común en hosts IPv6-only) | Buildear con `docker build --network host -t localforge-localforge .` y luego `docker compose up -d` (ver abajo) |
+| Ollama 404 "model not found" | Modelo no descargado | `docker compose --profile dev exec ollama ollama pull <modelo>` |
+| Docker build falla con "Temporary failure resolving" | DNS no funciona dentro de Docker (común en hosts IPv6-only) | Buildear con `docker build --network host -t localforge-localforge .` y luego `docker compose --profile dev up -d` (ver abajo) |
 
 ---
 
@@ -396,7 +415,7 @@ make test
 .venv/bin/python -m pytest tests/ -v
 
 # Desde el container Docker
-docker compose run --rm localforge python -m pytest tests/ -v
+docker compose --profile dev run --rm localforge python -m pytest tests/ -v
 ```
 
 Los pre-commit hooks corren automáticamente en cada `git commit`:
@@ -416,44 +435,49 @@ El token temporal de Meta expira en 24hs. Para obtener uno permanente:
 3. Clickear en el System User > **Generate New Token**
 4. Seleccionar tu app y los permisos: `whatsapp_business_messaging`, `whatsapp_business_management`
 5. Copiar el token generado y reemplazar `WHATSAPP_ACCESS_TOKEN` en `.env`
-6. Reiniciar: `docker compose restart localforge`
+6. Reiniciar: `docker compose --profile dev restart localforge`
 
 ---
 
 ## Comandos útiles
 
-```bash
-# Levantar todo
-docker compose up -d
+> Todos los comandos usan `--profile dev`. Para producción, reemplazar por `--profile prod`.
 
-# Levantar con GPU
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```bash
+# Levantar todo (dev)
+docker compose --profile dev up -d
+
+# Levantar con GPU (dev)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile dev up -d
 
 # Parar todo
-docker compose down
+docker compose --profile dev down
 
 # Ver logs de un servicio
-docker compose logs -f localforge
-docker compose logs -f ollama
-docker compose logs -f ngrok
+docker compose --profile dev logs -f localforge
+docker compose --profile dev logs -f ollama
+docker compose --profile dev logs -f ngrok
 
 # Reiniciar solo localforge (después de cambiar .env)
-docker compose restart localforge
+docker compose --profile dev restart localforge
 
 # Cambiar modelo
-docker compose exec ollama ollama pull qwen3:8b
+docker compose --profile dev exec ollama ollama pull qwen3:8b
 # Luego cambiar OLLAMA_MODEL en .env y reiniciar localforge
 
 # Listar modelos descargados
-docker compose exec ollama ollama list
+docker compose --profile dev exec ollama ollama list
 
 # Rebuild después de cambiar código
-docker compose up -d --build localforge
+docker compose --profile dev up -d --build localforge
 
 # Si el build falla con "Temporary failure resolving" (problema DNS/IPv6):
 docker build --network host -t localforge-localforge .
-docker compose up -d
+docker compose --profile dev up -d
 # Con GPU:
 docker build --network host -t localforge-localforge .
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile dev up -d
+
+# Verificar readiness (DB + Ollama)
+curl http://localhost:8000/ready
 ```

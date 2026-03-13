@@ -63,7 +63,7 @@ def register(
                     after_snapshot=f"{name}: {description[:200]}",
                 )
         except Exception:
-            pass
+            logger.debug("Audit log failed for create_project", exc_info=True)
         return f"Project '{name}' created (ID: {project_id})."
 
     async def list_projects(status: str = "active") -> str:

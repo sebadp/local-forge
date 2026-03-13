@@ -110,8 +110,11 @@ def register(
 
     async def delete_note(note_id: int) -> str:
         logger.info(f"Deleting note ID: {note_id}")
-        # Fetch before deleting for audit snapshot
-        _note_before = await repository.get_note(note_id)
+        # Fetch before deleting for audit snapshot (best-effort)
+        try:
+            _note_before = await repository.get_note(note_id)
+        except Exception:
+            _note_before = None
         deleted = await repository.delete_note(note_id)
         if deleted:
             # Audit log (best-effort)

@@ -166,6 +166,12 @@ async def lifespan(app: FastAPI):
 
         register_provenance(skill_registry, audit_logger)
 
+    # Background tasks — declared here so cleanup block can always reference them
+    import asyncio as _asyncio
+
+    _ontology_backfill_task: _asyncio.Task[None] | None = None
+    _backfill_task: _asyncio.Task[None] | None = None
+
     # Ontology tool registration + backfill
     if settings.ontology_enabled:
         from app.skills.tools.ontology_tools import register as register_ontology
@@ -181,9 +187,7 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning("Ontology backfill failed (non-critical)", exc_info=True)
 
-        import asyncio as _asyncio_ont
-
-        _asyncio_ont.create_task(_safe_ontology_backfill())
+        _ontology_backfill_task = _asyncio.create_task(_safe_ontology_backfill())
 
     # Scheduler Skill
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -267,8 +271,6 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
     # Also run once at startup to clean up pre-existing stale corrections
-    import asyncio as _asyncio
-
     _startup_cleanup_task = _asyncio.create_task(_cleanup_self_corrections())
 
     # Operational Automation (Plan 47): data-driven triggers
@@ -362,7 +364,6 @@ async def lifespan(app: FastAPI):
         logger.warning("Model warmup failed (non-critical)", exc_info=True)
 
     # Backfill embeddings as background task — doesn't block request acceptance
-    _backfill_task = None
     if vec_available and settings.semantic_search_enabled:
 
         async def _safe_backfill() -> None:
@@ -408,12 +409,13 @@ async def lifespan(app: FastAPI):
 
     # Cancel the embedding backfill before tearing down DB/HTTP so it doesn't
     # try to use already-closed resources.
-    if _backfill_task is not None and not _backfill_task.done():
-        _backfill_task.cancel()
-        try:
-            await _backfill_task
-        except _asyncio.CancelledError:
-            pass
+    for _bg_task in (_ontology_backfill_task, _backfill_task):
+        if _bg_task is not None and not _bg_task.done():
+            _bg_task.cancel()
+            try:
+                await _bg_task
+            except _asyncio.CancelledError:
+                pass
 
     await wait_for_in_flight(timeout=30.0)
     if memory_watcher:

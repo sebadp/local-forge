@@ -194,7 +194,7 @@ async def test_cleanup_old_entries():
 
     entries = await al.get_entity_history()
     assert len(entries) == 1
-    assert entries[0].entity_id == 2
+    assert entries[0].entity_id == "2"
     await conn.close()
 
 

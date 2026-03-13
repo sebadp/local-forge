@@ -73,7 +73,7 @@ def register(registry: SkillRegistry, entity_registry: EntityRegistry) -> None:
                 },
                 "entity_types": {
                     "type": "string",
-                    "description": "Comma-separated entity types: memory, note, project, task. Use 'all' for all types.",
+                    "description": "Comma-separated entity types: memory, note, project, task, topic, conversation, person. Use 'all' for all types.",
                     "default": "all",
                 },
                 "depth": {

@@ -65,7 +65,7 @@ El `AuditLogger` se inicializa en `main.py` y se hace accesible via `app/provena
 
 ## Decisiones de diseño
 
-1. **Best-effort**: audit log nunca bloquea ni falla el flujo. Errores silenciados con `except: pass`
+1. **Best-effort**: audit log nunca bloquea ni falla el flujo. Errores silenciados con `except Exception:` + `logger.warning`
 2. **Module-level accessor**: evita threading del audit_logger por 15+ parámetros de funciones
 3. **No FK enforcement en audit log**: `entity_id` es un INTEGER sin FK real, para no bloquear si la entidad ya fue eliminada
 4. **Snapshots truncados**: before/after se truncan a 200 chars para notas (suficiente para debugging)

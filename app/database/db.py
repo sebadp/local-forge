@@ -303,7 +303,7 @@ PROVENANCE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS entity_audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_type TEXT NOT NULL,
-    entity_id INTEGER NOT NULL,
+    entity_id TEXT NOT NULL,
     action TEXT NOT NULL,
     actor TEXT NOT NULL,
     source_trace_id TEXT,

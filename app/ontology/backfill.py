@@ -88,7 +88,7 @@ async def backfill_projects(conn: aiosqlite.Connection, registry: EntityRegistry
                     task_entity_id = await registry.upsert_entity(
                         entity_type="task",
                         ref_id=str(task_id),
-                        name=task_title,
+                        name=task_title or f"Task #{task_id}",
                         metadata={"project_id": proj_id},
                     )
                     await registry.add_relation(

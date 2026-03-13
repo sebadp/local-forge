@@ -66,7 +66,7 @@ class TraceRecorder:
             await self._repo.save_trace(trace_id, phone_number, input_text, message_type)
             if self.langfuse:
                 # Create deterministic Langfuse trace_id from our UUID (must be 32 hex chars)
-                lf_trace_id = Langfuse.create_trace_id(seed=trace_id)
+                lf_trace_id = self.langfuse.create_trace_id(seed=trace_id)
                 # Create root span representing the trace
                 root_span = self.langfuse.start_span(
                     trace_context={"trace_id": lf_trace_id},

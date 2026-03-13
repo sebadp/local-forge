@@ -94,7 +94,8 @@ class OllamaClient:
         total_duration_ms: float | None = total_dur / 1_000_000 if total_dur is not None else None
 
         # Runtime calibration: update chars-per-token ratio from actual Ollama counts
-        if input_tokens and input_tokens > 0:
+        # Skip when tools present — tool schemas add tokens not attributable to text chars
+        if input_tokens and input_tokens > 0 and not tools:
             try:
                 from app.context.token_estimator import calibrate
 

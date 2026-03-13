@@ -65,8 +65,9 @@ async def evaluate_rules(
         action_result = "success" if "error" not in result.lower() else "failed"
 
         await _safe_log(repository, rule.id, value, action_result, result)
-        await _safe_update_triggered(repository, rule.id)
-        triggered += 1
+        if action_result == "success":
+            await _safe_update_triggered(repository, rule.id)
+            triggered += 1
         logger.info(
             "Automation rule triggered: %s (condition: %s, result: %s)",
             rule.name,

@@ -162,6 +162,10 @@ WORKER_TOOL_SETS: dict[str, list[str]] = {
         "notes",
         "knowledge",
         "conversation",
+        "evaluation",
+        "debugging",
+        "provenance",
+        "automation",
     ],
 }
 

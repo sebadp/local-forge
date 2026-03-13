@@ -10,7 +10,8 @@
 
 | Qué buscás | Dónde está |
 |---|---|
-| Convenciones de código y patrones arquitectónicos | `CLAUDE.md` |
+| Convenciones de código y patrones universales | `CLAUDE.md` |
+| Patrones detallados por feature/subsistema | `docs/PATTERNS.md` |
 | Visión del producto, fases completadas, roadmap | `PRODUCT_PLAN.md` |
 | Setup inicial y configuración del entorno | `SETUP.md` |
 | Guía de testing manual completa | `docs/testing/manual_testing_guide.md` |

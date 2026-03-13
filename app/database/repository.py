@@ -345,8 +345,10 @@ class Repository:
         self, memory_id: int, embedding: list[float], *, auto_commit: bool = True
     ) -> None:
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_memories WHERE memory_id = ?", (memory_id,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_memories (memory_id, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_memories (memory_id, embedding) VALUES (?, ?)",
             (memory_id, blob),
         )
         if auto_commit:
@@ -421,8 +423,10 @@ class Repository:
         self, note_id: int, embedding: list[float], *, auto_commit: bool = True
     ) -> None:
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_notes WHERE note_id = ?", (note_id,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_notes (note_id, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_notes (note_id, embedding) VALUES (?, ?)",
             (note_id, blob),
         )
         if auto_commit:
@@ -863,8 +867,10 @@ class Repository:
         self, note_id: int, embedding: list[float], auto_commit: bool = True
     ) -> None:
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_project_notes WHERE note_id = ?", (note_id,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_project_notes (note_id, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_project_notes (note_id, embedding) VALUES (?, ?)",
             (note_id, blob),
         )
         if auto_commit:
@@ -893,8 +899,10 @@ class Repository:
     ) -> None:
         """Store embedding for a tool description (for semantic tool discovery)."""
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_tools WHERE tool_name = ?", (tool_name,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_tools (tool_name, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_tools (tool_name, embedding) VALUES (?, ?)",
             (tool_name, blob),
         )
         if auto_commit:
@@ -2227,8 +2235,9 @@ class Repository:
         action_type: str,
         action_config: str,
         cooldown_minutes: int = 60,
-    ) -> None:
-        await self._conn.execute(
+    ) -> bool:
+        """Returns True if a new rule was inserted, False if it already existed."""
+        cursor = await self._conn.execute(
             "INSERT OR IGNORE INTO automation_rules "
             "(name, description, condition_type, condition_config, "
             "action_type, action_config, cooldown_minutes) "
@@ -2244,3 +2253,4 @@ class Repository:
             ),
         )
         await self._conn.commit()
+        return cursor.rowcount > 0

@@ -45,7 +45,7 @@ def register(registry: SkillRegistry, repository: Repository) -> None:
         for row in rows:
             # id, rule_id, rule_name, triggered_at, condition_value, action_result, details
             lines.append(
-                f"- [{row[3]}] **{row[2]}**: {row[5]} — {row[4] or ''} "
+                f"- [{row[3]}] **{row[2]}**: {row[5] or ''} — {row[4] or ''} "
                 f"{'(' + row[6] + ')' if row[6] else ''}"
             )
         return "\n".join(lines)

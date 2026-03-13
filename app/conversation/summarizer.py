@@ -128,7 +128,7 @@ async def flush_to_memory(
                 )
                 await _al.version_memory(memory_id, fact.strip(), Actor.LLM_FLUSH)
         except Exception:
-            pass
+            logger.warning("Audit log failed during flush_to_memory", exc_info=True)
 
         # Embed the new fact (best-effort)
         if embed_model:

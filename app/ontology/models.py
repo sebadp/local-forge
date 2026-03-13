@@ -54,12 +54,14 @@ class GraphResult:
 
     def to_text(self, budget_chars: int = 2000) -> str:
         """Format graph result as text, respecting character budget."""
+        _plurals = {"memory": "memories", "person": "people"}
         lines = []
         used = 0
         for etype, entities in self.related.items():
             if not entities:
                 continue
-            header = f"\n[{etype}s]"
+            plural = _plurals.get(etype, f"{etype}s")
+            header = f"\n[{plural}]"
             lines.append(header)
             used += len(header)
             for e in entities:

@@ -61,7 +61,7 @@ class Settings(BaseSettings):
         return v
 
     # Ollama
-    ollama_base_url: str = "http://ollama:11434"
+    ollama_base_url: str = "http://localhost:11435"
     ollama_model: str = "qwen3:8b"
     system_prompt: str = (
         "You are a helpful personal assistant on WhatsApp. "

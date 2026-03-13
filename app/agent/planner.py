@@ -42,11 +42,13 @@ Reply with ONLY a JSON object in this exact format:
 ```
 
 Worker types and their tools:
-- "reader": web search, fetch web pages, GitHub API (get_file_contents, search_repositories), read files
-- "analyzer": GitHub API, web search, evaluation tools, debugging tools
+- "reader": web search, fetch web pages, GitHub API (get_file_contents, search_repositories), read files, news
+- "analyzer": GitHub API, web search, INTERNAL system metrics (get_eval_summary, get_latency_stats, get_agent_stats, get_search_stats, get_dashboard_stats), source code inspection, debugging (review_interactions, diagnose_trace)
 - "coder": source code tools, shell commands, GitHub (commits, PRs)
-- "reporter": evaluation tools, notes, debugging tools
+- "reporter": INTERNAL system metrics (get_eval_summary, get_latency_stats, get_dashboard_stats), notes, debugging tools
 - "general": all of the above (use when task spans multiple domains)
+
+IMPORTANT: When the user asks for "system statistics", "latencies", "p50/p95", "metrics", "performance data", or "dashboard" — these refer to THIS system's internal metrics stored in the database. Use "analyzer" or "reporter" workers with evaluation/debugging tools. Do NOT search the web for external monitoring tools.
 
 Rules:
 - Each task should be substantial (3-5 tool calls). Do NOT make single-tool-call tasks.

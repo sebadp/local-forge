@@ -119,7 +119,7 @@ async def seed_builtin_rules(repository: Repository) -> int:
     inserted = 0
     for rule in BUILTIN_RULES:
         try:
-            await repository.seed_automation_rule(
+            was_inserted = await repository.seed_automation_rule(
                 name=str(rule["name"]),
                 description=str(rule["description"]),
                 condition_type=str(rule["condition_type"]),
@@ -128,7 +128,8 @@ async def seed_builtin_rules(repository: Repository) -> int:
                 action_config=str(rule["action_config"]),
                 cooldown_minutes=int(str(rule["cooldown_minutes"])),
             )
-            inserted += 1
+            if was_inserted:
+                inserted += 1
         except Exception:
             logger.exception("Failed to seed rule: %s", rule["name"])
     return inserted

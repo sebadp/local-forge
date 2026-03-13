@@ -149,17 +149,20 @@ async def cmd_remember(args: str, context: CommandContext) -> str:
     await context.memory_file.sync(memories)
 
     # Audit log (best-effort)
-    if context.audit_logger:
-        from app.provenance.models import Action, Actor, EntityType
+    try:
+        if context.audit_logger:
+            from app.provenance.models import Action, Actor, EntityType
 
-        await context.audit_logger.log_mutation(
-            EntityType.MEMORY,
-            memory_id,
-            Action.CREATE,
-            Actor.USER,
-            after_snapshot=args.strip(),
-        )
-        await context.audit_logger.version_memory(memory_id, args.strip(), Actor.USER)
+            await context.audit_logger.log_mutation(
+                EntityType.MEMORY,
+                memory_id,
+                Action.CREATE,
+                Actor.USER,
+                after_snapshot=args.strip(),
+            )
+            await context.audit_logger.version_memory(memory_id, args.strip(), Actor.USER)
+    except Exception:
+        logger.warning("Audit log failed for /remember", exc_info=True)
 
     # Embed the new memory (best-effort)
     if context.ollama_client and context.embed_model:
@@ -186,16 +189,19 @@ async def cmd_forget(args: str, context: CommandContext) -> str:
     await context.memory_file.sync(memories)
 
     # Audit log (best-effort)
-    if context.audit_logger:
-        from app.provenance.models import Action, Actor, EntityType
+    try:
+        if context.audit_logger:
+            from app.provenance.models import Action, Actor, EntityType
 
-        await context.audit_logger.log_mutation(
-            EntityType.MEMORY,
-            memory_id,
-            Action.DELETE,
-            Actor.USER,
-            before_snapshot=args.strip(),
-        )
+            await context.audit_logger.log_mutation(
+                EntityType.MEMORY,
+                memory_id,
+                Action.DELETE,
+                Actor.USER,
+                before_snapshot=args.strip(),
+            )
+    except Exception:
+        logger.warning("Audit log failed for /forget", exc_info=True)
 
     # Remove embedding (best-effort)
     if context.embed_model:

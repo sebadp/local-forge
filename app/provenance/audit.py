@@ -76,17 +76,11 @@ class AuditLogger:
         if not self._enabled:
             return
         try:
-            # Get current max version
-            cursor = await self._conn.execute(
-                "SELECT COALESCE(MAX(version), 0) FROM memory_versions WHERE memory_id = ?",
-                (memory_id,),
-            )
-            row = await cursor.fetchone()
-            next_version = (row[0] if row else 0) + 1  # type: ignore[index]
+            # Atomic: compute next version and insert in a single statement
             await self._conn.execute(
                 "INSERT INTO memory_versions (memory_id, version, content, actor, source_trace_id) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (memory_id, next_version, content, actor, source_trace_id),
+                "VALUES (?, (SELECT COALESCE(MAX(version), 0) + 1 FROM memory_versions WHERE memory_id = ?), ?, ?, ?)",
+                (memory_id, memory_id, content, actor, source_trace_id),
             )
             await self._conn.commit()
         except Exception:

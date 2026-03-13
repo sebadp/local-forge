@@ -63,7 +63,7 @@ def register(registry: SkillRegistry, audit_logger: AuditLogger) -> None:
         entries = await audit_logger.get_entity_history(
             entity_type=entity_type or None,
             actor=actor or None,
-            limit=min(limit, 50),
+            limit=max(1, min(limit, 50)),
         )
         if not entries:
             filters = []
