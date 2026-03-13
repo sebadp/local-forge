@@ -21,7 +21,7 @@ def register(registry: SkillRegistry, entity_registry: EntityRegistry) -> None:
 
         Args:
             query: Natural language search query (e.g. "Python deployment", "proyecto X")
-            entity_types: Comma-separated entity types to search: memory, note, project, task, topic.
+            entity_types: Comma-separated entity types to search: memory, note, project, task, topic, conversation, person.
                           Use "all" to search all types.
             depth: How many relationship hops to traverse (1-2 recommended, max 3)
         """

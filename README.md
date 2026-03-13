@@ -23,7 +23,7 @@ Si estás buscando dar el salto al desarrollo con IA, en este repositorio vas a 
 - **Multimodalidad Local**: Soporte nativo y gratuito para notas de voz y mensajes de WhatsApp o Telegram (transcripción con Whisper) e imágenes (analizadas con LLaVA).
 - **Observabilidad en IA**: Integración con Langfuse para trazar *prompts*, latencias, consumo de *tokens* y el flujo de llamadas a herramientas.
 
-Soporta WhatsApp Cloud API y Telegram Bot API simultáneamente, con feature flags independientes por plataforma. Dockerizado, cubierto con +600 tests y listo para experimentar con costo de operación **cero**.
+Soporta WhatsApp Cloud API y Telegram Bot API simultáneamente, con feature flags independientes por plataforma. Dockerizado, cubierto con 785+ tests y listo para experimentar con costo de operación **cero**.
 
 ## Quickstart
 

@@ -145,21 +145,23 @@ class EntityRegistry:
             rows = await cursor.fetchall()
             results.extend((r[0], r[1], "in") for r in rows)
         else:
+            half = max(1, limit // 2)
             cursor = await self._conn.execute(
                 "SELECT target_id, relation_type FROM entity_relations "
                 "WHERE source_id = ? ORDER BY confidence DESC LIMIT ?",
-                (entity_id, limit),
+                (entity_id, half),
             )
             rows = await cursor.fetchall()
             results.extend((r[0], r[1], "out") for r in rows)
+            remaining = limit - len(results)
             cursor = await self._conn.execute(
                 "SELECT source_id, relation_type FROM entity_relations "
                 "WHERE target_id = ? ORDER BY confidence DESC LIMIT ?",
-                (entity_id, limit),
+                (entity_id, remaining),
             )
             rows = await cursor.fetchall()
             results.extend((r[0], r[1], "in") for r in rows)
-        return results[:limit]
+        return results
 
     async def search_entities(
         self, query: str, entity_types: list[str] | None = None, limit: int = 10

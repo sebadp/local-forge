@@ -29,40 +29,48 @@ def _make_registry(repository_mock):
 def _empty_repo() -> AsyncMock:
     """Repository mock with all Plan 39 methods returning empty / zero data."""
     repo = AsyncMock()
-    repo.get_tool_efficiency = AsyncMock(return_value={
-        "avg_tool_calls": 0.0,
-        "max_tool_calls": 0,
-        "no_tool_traces": 0,
-        "total_traces": 0,
-        "avg_llm_iterations": 0.0,
-        "max_llm_iterations": 0,
-        "tool_error_rates": [],
-    })
+    repo.get_tool_efficiency = AsyncMock(
+        return_value={
+            "avg_tool_calls": 0.0,
+            "max_tool_calls": 0,
+            "no_tool_traces": 0,
+            "total_traces": 0,
+            "avg_llm_iterations": 0.0,
+            "max_llm_iterations": 0,
+            "tool_error_rates": [],
+        }
+    )
     repo.get_token_consumption = AsyncMock(return_value={})
     repo.get_tool_redundancy = AsyncMock(return_value=[])
-    repo.get_context_quality_metrics = AsyncMock(return_value={
-        "avg_fill_rate": 0.0,
-        "max_fill_rate": 0.0,
-        "near_limit_count": 0,
-        "fill_n": 0,
-        "classify_upgrade_rate": 0.0,
-        "classify_upgraded_n": 0,
-        "avg_memories_retrieved": 0.0,
-        "avg_memories_passed": 0.0,
-        "avg_memories_returned": 0.0,
-        "memory_relevance_pct": None,
-    })
+    repo.get_context_quality_metrics = AsyncMock(
+        return_value={
+            "avg_fill_rate": 0.0,
+            "max_fill_rate": 0.0,
+            "near_limit_count": 0,
+            "fill_n": 0,
+            "classify_upgrade_rate": 0.0,
+            "classify_upgraded_n": 0,
+            "avg_memories_retrieved": 0.0,
+            "avg_memories_passed": 0.0,
+            "avg_memories_returned": 0.0,
+            "memory_relevance_pct": None,
+        }
+    )
     repo.get_context_rot_risk = AsyncMock(return_value=[])
     repo.get_planner_metrics = AsyncMock(return_value={"total_planner_sessions": 0})
-    repo.get_hitl_rate = AsyncMock(return_value={
-        "total_escalations": 0,
-        "approved": 0,
-        "rejected": 0,
-    })
-    repo.get_goal_completion_rate = AsyncMock(return_value={
-        "goal_completion_rate_pct": 0.0,
-        "n": 0,
-    })
+    repo.get_hitl_rate = AsyncMock(
+        return_value={
+            "total_escalations": 0,
+            "approved": 0,
+            "rejected": 0,
+        }
+    )
+    repo.get_goal_completion_rate = AsyncMock(
+        return_value={
+            "goal_completion_rate_pct": 0.0,
+            "n": 0,
+        }
+    )
     # also needed by get_latency_stats and get_search_stats
     repo.get_latency_percentiles = AsyncMock(return_value=[])
     repo.get_e2e_latency_percentiles = AsyncMock(return_value=[])
@@ -298,17 +306,19 @@ async def test_get_agent_stats_no_data():
 async def test_get_agent_stats_tools_focus():
     """Tool section shows avg/max tool calls and error rates."""
     repo = _empty_repo()
-    repo.get_tool_efficiency = AsyncMock(return_value={
-        "avg_tool_calls": 3.2,
-        "max_tool_calls": 12,
-        "no_tool_traces": 5,
-        "total_traces": 50,
-        "avg_llm_iterations": 2.1,
-        "max_llm_iterations": 6,
-        "tool_error_rates": [
-            {"tool": "web_search", "total": 10, "errors": 3, "error_rate": 0.3},
-        ],
-    })
+    repo.get_tool_efficiency = AsyncMock(
+        return_value={
+            "avg_tool_calls": 3.2,
+            "max_tool_calls": 12,
+            "no_tool_traces": 5,
+            "total_traces": 50,
+            "avg_llm_iterations": 2.1,
+            "max_llm_iterations": 6,
+            "tool_error_rates": [
+                {"tool": "web_search", "total": 10, "errors": 3, "error_rate": 0.3},
+            ],
+        }
+    )
 
     registry = _make_registry(repo)
     handler = registry._tools["get_agent_stats"].handler
@@ -328,13 +338,15 @@ async def test_get_agent_stats_tools_focus():
 async def test_get_agent_stats_tokens_focus():
     """Token section shows avg/total input and output tokens."""
     repo = _empty_repo()
-    repo.get_token_consumption = AsyncMock(return_value={
-        "avg_input_tokens": 1024.0,
-        "avg_output_tokens": 256.0,
-        "total_input_tokens": 102400,
-        "total_output_tokens": 25600,
-        "n_generations": 100,
-    })
+    repo.get_token_consumption = AsyncMock(
+        return_value={
+            "avg_input_tokens": 1024.0,
+            "avg_output_tokens": 256.0,
+            "total_input_tokens": 102400,
+            "total_output_tokens": 25600,
+            "n_generations": 100,
+        }
+    )
 
     registry = _make_registry(repo)
     handler = registry._tools["get_agent_stats"].handler
@@ -353,30 +365,36 @@ async def test_get_agent_stats_tokens_focus():
 async def test_get_agent_stats_agent_focus():
     """Agent efficacy section shows planner, HITL, and goal completion."""
     repo = _empty_repo()
-    repo.get_planner_metrics = AsyncMock(return_value={
-        "total_planner_sessions": 10,
-        "replanned_sessions": 3,
-        "replanning_rate_pct": 30.0,
-        "avg_replans_per_session": 0.4,
-    })
-    repo.get_hitl_rate = AsyncMock(return_value={
-        "total_escalations": 4,
-        "approved": 3,
-        "rejected": 1,
-    })
-    repo.get_goal_completion_rate = AsyncMock(return_value={
-        "goal_completion_rate_pct": 88.0,
-        "n": 10,
-    })
+    repo.get_planner_metrics = AsyncMock(
+        return_value={
+            "total_planner_sessions": 10,
+            "replanned_sessions": 3,
+            "replanning_rate_pct": 30.0,
+            "avg_replans_per_session": 0.4,
+        }
+    )
+    repo.get_hitl_rate = AsyncMock(
+        return_value={
+            "total_escalations": 4,
+            "approved": 3,
+            "rejected": 1,
+        }
+    )
+    repo.get_goal_completion_rate = AsyncMock(
+        return_value={
+            "goal_completion_rate_pct": 88.0,
+            "n": 10,
+        }
+    )
 
     registry = _make_registry(repo)
     handler = registry._tools["get_agent_stats"].handler
     result = await handler(days=7, focus="agent")
 
-    assert "10" in result            # planner sessions
-    assert "30.0%" in result         # replanning rate
-    assert "4" in result             # HITL escalations
-    assert "88.0%" in result         # goal completion
+    assert "10" in result  # planner sessions
+    assert "30.0%" in result  # replanning rate
+    assert "4" in result  # HITL escalations
+    assert "88.0%" in result  # goal completion
 
 
 # ---------------------------------------------------------------------------

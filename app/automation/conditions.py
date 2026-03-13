@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -58,11 +59,14 @@ async def _check_query(rule: AutomationRule, repository: Repository) -> tuple[bo
     if not upper_sql.startswith("SELECT"):
         logger.warning("Rejected non-SELECT query in rule %s: %s", rule.name, sql[:80])
         return False, "rejected_non_select"
-    _FORBIDDEN = ["ATTACH", "PRAGMA", "LOAD_EXTENSION", ";", "INTO"]
-    for token in _FORBIDDEN:
-        if token in upper_sql:
+    _FORBIDDEN_WORDS = ["ATTACH", "PRAGMA", "LOAD_EXTENSION", "INTO"]
+    for token in _FORBIDDEN_WORDS:
+        if re.search(rf"\b{token}\b", upper_sql):
             logger.warning("Rejected unsafe SQL token '%s' in rule %s", token, rule.name)
             return False, f"rejected_unsafe:{token}"
+    if ";" in upper_sql:
+        logger.warning("Rejected unsafe SQL token ';' in rule %s", rule.name)
+        return False, "rejected_unsafe:;"
 
     cursor = await repository.conn.execute(sql)
     row = await cursor.fetchone()
