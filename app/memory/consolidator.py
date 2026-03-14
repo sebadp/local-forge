@@ -48,6 +48,10 @@ async def consolidate_memories(
     if len(memories) < min_memories:
         return 0
 
+    from app.tracing.context import get_current_trace
+
+    trace = get_current_trace()
+
     try:
         from app.eval.prompt_manager import get_active_prompt
 
@@ -59,7 +63,14 @@ async def consolidate_memories(
 
     prompt = consolidate_template.format(memories=_format_memories(memories))
     messages = [ChatMessage(role="user", content=prompt)]
-    response = await ollama_client.chat(messages, think=False)
+
+    if trace:
+        async with trace.span("memory:consolidation", kind="generation") as span:
+            span.set_input({"memory_count": len(memories)})
+            response = await ollama_client.chat(messages, think=False)
+            span.set_output({"response_length": len(response) if response else 0})
+    else:
+        response = await ollama_client.chat(messages, think=False)
 
     # Parse JSON response
     try:

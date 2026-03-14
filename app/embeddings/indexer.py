@@ -92,6 +92,10 @@ async def backfill_embeddings(
     if not unembedded:
         return 0
 
+    from app.tracing.context import get_current_trace
+
+    trace = get_current_trace()
+
     count = 0
     for i in range(0, len(unembedded), BATCH_SIZE):
         batch = unembedded[i : i + BATCH_SIZE]
@@ -113,6 +117,15 @@ async def backfill_embeddings(
 
     if count:
         logger.info("Backfilled %d memory embeddings", count)
+
+    if trace and count:
+        try:
+            async with trace.span("embedding:backfill", kind="span") as span:
+                span.set_input({"total_unembedded": len(unembedded)})
+                span.set_output({"embedded_count": count})
+        except Exception:
+            logger.debug("Failed to record backfill span", exc_info=True)
+
     return count
 
 

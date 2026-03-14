@@ -51,6 +51,7 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Token Accuracy (runtime calibration via Ollama prompt_eval_count, EMA per-model) | [`45-token_accuracy.md`](45-token_accuracy.md) | Exec Plan 45 |
 | Deployment Maturity (health checks, Docker healthcheck, profiles, CI/CD release) | [`46-deployment_maturity.md`](46-deployment_maturity.md) | Exec Plan 46 |
 | Operational Automation (data-driven triggers, metric alerts, self-healing) | [`47-operational_automation.md`](47-operational_automation.md) | Exec Plan 47 |
+| Langfuse v3 — Observabilidad, Stack de Servicios e Instrumentación Avanzada | [`48-langfuse_v3.md`](48-langfuse_v3.md) | Observability |
 
 ## Cómo crear un nuevo walkthrough
 

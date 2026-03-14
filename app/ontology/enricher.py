@@ -39,6 +39,7 @@ async def enrich_context(
     """
     try:
         from app.ontology.graph import find_by_query
+        from app.tracing.context import get_current_trace
 
         results = await find_by_query(
             registry=registry,
@@ -71,11 +72,21 @@ async def enrich_context(
             return EnrichmentResult()
 
         combined = "\n".join(sections)
-        return EnrichmentResult(
+        result = EnrichmentResult(
             extra_text=combined,
             entities_found=total_entities,
             types_found=sorted(types_seen),
         )
+
+        trace = get_current_trace()
+        if trace:
+            async with trace.span("ontology:enrich", kind="span") as span:
+                span.set_input({"query": query[:200], "depth": depth})
+                span.set_output(
+                    {"entities_found": result.entities_found, "types": result.types_found}
+                )
+
+        return result
     except Exception:
         logger.debug("Context enrichment failed (best-effort)", exc_info=True)
         return EnrichmentResult()

@@ -80,7 +80,19 @@ async def flush_to_memory(
     )
 
     messages = [ChatMessage(role="user", content=prompt)]
-    response = await ollama_client.chat(messages, think=False)
+
+    from app.tracing.context import get_current_trace
+
+    trace = get_current_trace()
+    if trace:
+        async with trace.span("memory:flush", kind="generation") as span:
+            span.set_input(
+                {"message_count": len(old_messages), "existing_memories": len(existing_memories)}
+            )
+            response = await ollama_client.chat(messages, think=False)
+            span.set_output({"response_length": len(response) if response else 0})
+    else:
+        response = await ollama_client.chat(messages, think=False)
 
     # Parse JSON response
     try:
@@ -214,7 +226,19 @@ async def maybe_summarize(
 
         summary_prompt = "\n".join(prompt_parts)
         messages = [ChatMessage(role="user", content=summary_prompt)]
-        summary = await ollama_client.chat(messages, think=False)
+
+        from app.tracing.context import get_current_trace
+
+        trace = get_current_trace()
+        if trace:
+            async with trace.span("llm:summarize", kind="generation") as span:
+                span.set_input(
+                    {"conversation_id": conversation_id, "message_count": len(old_messages)}
+                )
+                summary = await ollama_client.chat(messages, think=False)
+                span.set_output({"summary_length": len(summary) if summary else 0})
+        else:
+            summary = await ollama_client.chat(messages, think=False)
 
         await repository.save_summary(conversation_id, summary, count)
         await repository.delete_old_messages(conversation_id, max_messages)

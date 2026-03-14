@@ -29,6 +29,10 @@ async def evaluate_rules(
         logger.exception("Failed to fetch automation rules")
         return 0
 
+    from app.tracing.context import get_current_trace
+
+    trace = get_current_trace()
+
     triggered = 0
     for row in rows:
         try:
@@ -74,6 +78,14 @@ async def evaluate_rules(
             value,
             result,
         )
+
+    if trace:
+        try:
+            async with trace.span("automation:evaluate", kind="span") as span:
+                span.set_input({"rule_count": len(rows)})
+                span.set_output({"triggered": triggered})
+        except Exception:
+            logger.debug("Failed to record automation span", exc_info=True)
 
     return triggered
 

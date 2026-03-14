@@ -11,6 +11,7 @@ Options:
     --entry-type TYPE   Filter by entry type: correction | golden | failure | all (default: all)
     --limit N           Max entries to evaluate (default: 20)
     --threshold FLOAT   Accuracy threshold for exit code 0/1 (default: 0.7)
+    --langfuse          Sync results to Langfuse Experiments (requires LANGFUSE_* env vars)
 
 Exit codes:
     0   accuracy >= threshold
@@ -54,6 +55,7 @@ async def _run_eval(
     entry_type: str | None,
     limit: int,
     threshold: float,
+    use_langfuse: bool = False,
 ) -> int:
     """Core evaluation loop. Returns process exit code."""
     # Init DB (minimal — no sqlite-vec needed for eval)
@@ -118,6 +120,37 @@ async def _run_eval(
 
         await conn.close()
 
+    # --- Langfuse experiment sync ---
+    if use_langfuse and results:
+        try:
+            from langfuse import Langfuse
+
+            lf = Langfuse()
+            dataset_name = "localforge-eval"
+            lf.create_dataset(name=dataset_name)
+            for r in results:
+                lf_trace_id = lf.create_trace_id(seed=f"eval-{r['id']}")
+                root = lf.start_span(
+                    trace_context={"trace_id": lf_trace_id},
+                    name="eval_run",
+                    input=r.get("input_preview", ""),
+                )
+                root.update_trace(
+                    metadata={"model": model, "entry_type": r.get("type", "unknown")},
+                )
+                lf.create_score(
+                    trace_id=lf_trace_id,
+                    name="correctness",
+                    value=1.0 if r["passed"] else 0.0,
+                )
+                root.end()
+            lf.flush()
+            print(
+                f"[Langfuse] Synced {len(results)} experiment results to dataset '{dataset_name}'"
+            )
+        except Exception as exc:
+            print(f"[Langfuse] Failed to sync: {exc}")
+
     # --- Print results table ---
     col_w = [8, 12, 8, 62]
     header = f"{'entry_id':<{col_w[0]}} {'type':<{col_w[1]}} {'passed':<{col_w[2]}} input (preview)"
@@ -177,6 +210,11 @@ def main() -> None:
         default=0.7,
         help="Accuracy threshold for exit code 0 (default: 0.7)",
     )
+    parser.add_argument(
+        "--langfuse",
+        action="store_true",
+        help="Sync results to Langfuse Experiments (requires LANGFUSE_* env vars)",
+    )
     args = parser.parse_args()
 
     exit_code = asyncio.run(
@@ -187,6 +225,7 @@ def main() -> None:
             entry_type=args.entry_type if args.entry_type != "all" else None,
             limit=args.limit,
             threshold=args.threshold,
+            use_langfuse=args.langfuse,
         )
     )
     sys.exit(exit_code)

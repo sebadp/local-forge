@@ -22,6 +22,7 @@ async def maybe_curate_to_dataset(
     repository: object,
     failed_check_names: list[str] | None = None,
     trace_recorder: object | None = None,
+    primary_category: str | None = None,
 ) -> None:
     """Auto-curate a completed trace to the eval dataset. Best-effort — never raises.
 
@@ -46,36 +47,49 @@ async def maybe_curate_to_dataset(
 
         # Failure takes priority — detecting problems is most valuable
         if any_system_failure or has_negative_user:
-            failure_tags = (
-                [f"guardrail:{name}" for name in failed_check_names] if failed_check_names else None
-            )
+            failure_tags: list[str] = []
+            if failed_check_names:
+                failure_tags.extend(f"guardrail:{name}" for name in failed_check_names)
+            if primary_category:
+                failure_tags.append(f"category:{primary_category}")
             await repository.add_dataset_entry(  # type: ignore[attr-defined]
                 trace_id=trace_id,
                 entry_type="failure",
                 input_text=input_text,
                 output_text=output_text,
-                tags=failure_tags,
+                tags=failure_tags or None,
             )
             logger.debug("Curated trace %s as failure (tags=%s)", trace_id, failure_tags)
             return
 
         # Golden confirmed: system OK + user confirmed quality
         if all_system_high and has_positive_user:
+            _golden_meta: dict = {"confirmed": True}
+            if primary_category:
+                _golden_meta["primary_category"] = primary_category
             await repository.add_dataset_entry(  # type: ignore[attr-defined]
                 trace_id=trace_id,
                 entry_type="golden",
                 input_text=input_text,
                 output_text=output_text,
-                metadata={"confirmed": True},
+                metadata=_golden_meta,
             )
             logger.debug("Curated trace %s as golden (confirmed)", trace_id)
             if trace_recorder is not None:
                 try:
+                    _sync_meta: dict = {
+                        "entry_type": "golden",
+                        "trace_id": trace_id,
+                        "confirmed": True,
+                        "source_trace_id": trace_id,
+                    }
+                    if primary_category:
+                        _sync_meta["primary_category"] = primary_category
                     await trace_recorder.sync_dataset_to_langfuse(  # type: ignore[attr-defined]
                         dataset_name="localforge-eval",
                         input_text=input_text,
                         expected_output=output_text,
-                        metadata={"entry_type": "golden", "trace_id": trace_id, "confirmed": True},
+                        metadata=_sync_meta,
                     )
                 except Exception:
                     logger.debug("Failed to sync golden trace %s to Langfuse", trace_id)
@@ -83,12 +97,15 @@ async def maybe_curate_to_dataset(
 
         # Golden candidate: system OK, no user signal yet
         if all_system_high and not user_scores:
+            _candidate_meta: dict = {"confirmed": False}
+            if primary_category:
+                _candidate_meta["primary_category"] = primary_category
             await repository.add_dataset_entry(  # type: ignore[attr-defined]
                 trace_id=trace_id,
                 entry_type="golden",
                 input_text=input_text,
                 output_text=output_text,
-                metadata={"confirmed": False},
+                metadata=_candidate_meta,
             )
             logger.debug("Curated trace %s as golden (candidate)", trace_id)
 
@@ -128,6 +145,7 @@ async def add_correction_pair(
                     metadata={
                         "entry_type": "correction",
                         "trace_id": previous_trace_id,
+                        "source_trace_id": previous_trace_id,
                         "confirmed": True,
                     },
                 )

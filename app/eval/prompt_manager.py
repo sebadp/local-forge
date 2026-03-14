@@ -25,6 +25,31 @@ logger = logging.getLogger(__name__)
 _active_prompts: dict[str, str] = {}
 
 
+def _try_langfuse_prompt(name: str) -> str | None:
+    """Try to fetch a prompt from Langfuse Prompt Management. Returns None on failure."""
+    try:
+        from app.config import Settings
+
+        settings = Settings()  # type: ignore[call-arg]
+        if not settings.langfuse_public_key or not settings.langfuse_secret_key:
+            return None
+        from langfuse import Langfuse
+
+        langfuse = Langfuse(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+        )
+        prompt = langfuse.get_prompt(name, label="production")
+        compiled = prompt.compile()
+        if compiled:
+            logger.debug("Loaded prompt '%s' from Langfuse", name)
+            return compiled
+    except Exception:
+        logger.debug("Langfuse prompt fallback failed for '%s'", name)
+    return None
+
+
 async def get_active_prompt(
     prompt_name: str,
     repository: object,
@@ -35,8 +60,9 @@ async def get_active_prompt(
     Fallback order:
     1. Cache
     2. DB active version
-    3. prompt_registry default
-    4. Explicit `default` param
+    3. Langfuse prompt management (label="production")
+    4. prompt_registry default
+    5. Explicit `default` param
     """
     if prompt_name not in _active_prompts:
         try:
@@ -44,14 +70,19 @@ async def get_active_prompt(
             if row:
                 _active_prompts[prompt_name] = row["content"]
             else:
-                # Fall back to registry, then explicit default
-                from app.eval.prompt_registry import get_default
+                # Try Langfuse prompt management
+                langfuse_content = _try_langfuse_prompt(prompt_name)
+                if langfuse_content:
+                    _active_prompts[prompt_name] = langfuse_content
+                else:
+                    # Fall back to registry, then explicit default
+                    from app.eval.prompt_registry import get_default
 
-                registry_default = get_default(prompt_name)
-                resolved = registry_default or default
-                if resolved is None:
-                    raise ValueError(f"No content found for prompt '{prompt_name}'")
-                _active_prompts[prompt_name] = resolved
+                    registry_default = get_default(prompt_name)
+                    resolved = registry_default or default
+                    if resolved is None:
+                        raise ValueError(f"No content found for prompt '{prompt_name}'")
+                    _active_prompts[prompt_name] = resolved
         except ValueError:
             raise
         except Exception as exc:

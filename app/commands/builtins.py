@@ -508,6 +508,18 @@ async def cmd_approve_prompt(args: str, context: CommandContext) -> str:
 
     invalidate_prompt_cache(prompt_name)
 
+    # Sync approved prompt to Langfuse with "production" label (best-effort)
+    if context.trace_recorder:
+        try:
+            await context.trace_recorder.upsert_prompt(
+                name=prompt_name,
+                content=row["content"],
+                version=version,
+                labels=["production"],
+            )
+        except Exception:
+            logger.debug("Failed to sync prompt to Langfuse after /approve-prompt")
+
     return (
         f"Prompt '{prompt_name}' v{version} activado.{eval_summary}\n"
         "Los próximos mensajes usarán la nueva versión."

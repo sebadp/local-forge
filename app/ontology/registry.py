@@ -124,6 +124,7 @@ class EntityRegistry:
         direction is 'out' (source→target) or 'in' (target→source).
         """
         results: list[tuple[str, str, str]] = []
+        half = max(1, limit // 2)
         if relation_types:
             placeholders = ",".join("?" * len(relation_types))
             # Outgoing
@@ -131,21 +132,21 @@ class EntityRegistry:
                 f"SELECT target_id, relation_type FROM entity_relations "
                 f"WHERE source_id = ? AND relation_type IN ({placeholders}) "
                 f"ORDER BY confidence DESC LIMIT ?",
-                [entity_id, *relation_types, limit],
+                [entity_id, *relation_types, half],
             )
             rows = await cursor.fetchall()
             results.extend((r[0], r[1], "out") for r in rows)
+            remaining = limit - len(results)
             # Incoming
             cursor = await self._conn.execute(
                 f"SELECT source_id, relation_type FROM entity_relations "
                 f"WHERE target_id = ? AND relation_type IN ({placeholders}) "
                 f"ORDER BY confidence DESC LIMIT ?",
-                [entity_id, *relation_types, limit],
+                [entity_id, *relation_types, remaining],
             )
             rows = await cursor.fetchall()
             results.extend((r[0], r[1], "in") for r in rows)
         else:
-            half = max(1, limit // 2)
             cursor = await self._conn.execute(
                 "SELECT target_id, relation_type FROM entity_relations "
                 "WHERE source_id = ? ORDER BY confidence DESC LIMIT ?",

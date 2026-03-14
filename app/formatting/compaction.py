@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from app.llm.client import OllamaClient
 from app.models import ChatMessage
@@ -18,8 +19,7 @@ from app.tracing.context import get_current_trace
 
 logger = logging.getLogger(__name__)
 
-# Must match config.Settings.compaction_threshold default
-_DEFAULT_COMPACTION_THRESHOLD = 20000
+_DEFAULT_COMPACTION_THRESHOLD = int(os.getenv("COMPACTION_THRESHOLD", "20000"))
 
 # Key fields to extract per response type. Extensible by adding new profiles.
 # These are the fields that are most useful for follow-up tool calls.
