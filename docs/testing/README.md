@@ -38,6 +38,11 @@ Cada archivo en este directorio cubre el testing manual de una feature específi
 | Prompt Engineering & Versioning (think=False, few-shot, prompt registry, eval-coupled versioning, /prompts command) | [`32-prompt_engineering_testing.md`](32-prompt_engineering_testing.md) |
 | Telegram Integration (multi-platform, PlatformClient Protocol, Adapter pattern) | [`35-telegram_testing.md`](35-telegram_testing.md) |
 | Performance Optimization (latency, indexes, event loop, startup) | [`36-performance_testing.md`](36-performance_testing.md) |
+| Ontology Data Model / Knowledge Graph (entities, relations, BFS traversal, enrichment) | [`42-ontology_testing.md`](42-ontology_testing.md) |
+| Data Provenance & Lineage (audit log, memory versioning, lineage tools) | [`44-data_provenance_testing.md`](44-data_provenance_testing.md) |
+| Token Accuracy (runtime calibration, EMA per-model) | [`45-token_accuracy_testing.md`](45-token_accuracy_testing.md) |
+| Deployment Maturity (liveness, readiness, Docker healthcheck, profiles, release) | [`46-deployment_maturity_testing.md`](46-deployment_maturity_testing.md) |
+| Operational Automation (data-driven triggers, metric alerts, self-healing) | [`47-operational_automation_testing.md`](47-operational_automation_testing.md) |
 
 ## Convenciones
 

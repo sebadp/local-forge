@@ -93,6 +93,17 @@ class OllamaClient:
         total_dur = data.get("total_duration")
         total_duration_ms: float | None = total_dur / 1_000_000 if total_dur is not None else None
 
+        # Runtime calibration: update chars-per-token ratio from actual Ollama counts
+        # Skip when tools present — tool schemas add tokens not attributable to text chars
+        if input_tokens and input_tokens > 0 and not tools:
+            try:
+                from app.context.token_estimator import calibrate
+
+                prompt_chars = sum(len(d.get("content", "") or "") for d in payload["messages"])
+                calibrate(use_model, prompt_chars, input_tokens)
+            except Exception:
+                pass  # best-effort, never block
+
         if content:
             logger.debug("LLM raw response: %s", content[:500])
             # Strip deepseek/qwen reasoning blocks: <think>...</think>

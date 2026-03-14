@@ -82,3 +82,8 @@ def get_trace_recorder(request: Request):
 def get_telegram_client(request: Request):
     """Return the TelegramClient, or None if Telegram is disabled."""
     return getattr(request.app.state, "telegram_client", None)
+
+
+def get_entity_registry(request: Request) -> object | None:
+    """Return the EntityRegistry, or None if ontology is disabled."""
+    return getattr(request.app.state, "entity_registry", None)

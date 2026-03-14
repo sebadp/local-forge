@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # TraceRecorder.start_trace — session_id and platform
@@ -10,47 +10,57 @@ from unittest.mock import AsyncMock, MagicMock
 
 
 async def test_start_trace_sends_session_id():
-    """start_trace must pass session_id=phone_number to langfuse.trace()."""
+    """start_trace must call start_span with trace_context and update_trace with user/session metadata."""
     mock_langfuse = MagicMock()
+    # Mock the span returned by start_span
+    mock_span = MagicMock()
+    mock_langfuse.start_span.return_value = mock_span
+
     repo = AsyncMock()
     repo.save_trace = AsyncMock()
 
     from app.tracing.recorder import TraceRecorder
 
-    recorder = TraceRecorder(repository=repo, langfuse=mock_langfuse)
-    await recorder.start_trace(
-        trace_id="abc123",
-        phone_number="+5491234567890",
-        input_text="hello",
-        message_type="text",
-        platform="whatsapp",
-    )
+    with patch("app.tracing.recorder.Langfuse.create_trace_id", return_value="a" * 32):
+        recorder = TraceRecorder(repository=repo, langfuse=mock_langfuse)
+        await recorder.start_trace(
+            trace_id="abc123",
+            phone_number="+5491234567890",
+            input_text="hello",
+            message_type="text",
+            platform="whatsapp",
+        )
 
-    mock_langfuse.trace.assert_called_once()
-    call_kwargs = mock_langfuse.trace.call_args.kwargs
+    mock_langfuse.start_span.assert_called_once()
+    mock_span.update_trace.assert_called_once()
+    call_kwargs = mock_span.update_trace.call_args.kwargs
     assert call_kwargs.get("session_id") == "+5491234567890"
     assert call_kwargs.get("user_id") == "+5491234567890"
     assert call_kwargs.get("metadata", {}).get("platform") == "whatsapp"
 
 
 async def test_start_trace_platform_telegram():
-    """Platform tag 'telegram' is forwarded to Langfuse metadata."""
+    """Platform tag 'telegram' is forwarded to root span's update_trace metadata."""
     mock_langfuse = MagicMock()
+    mock_span = MagicMock()
+    mock_langfuse.start_span.return_value = mock_span
+
     repo = AsyncMock()
     repo.save_trace = AsyncMock()
 
     from app.tracing.recorder import TraceRecorder
 
-    recorder = TraceRecorder(repository=repo, langfuse=mock_langfuse)
-    await recorder.start_trace(
-        trace_id="def456",
-        phone_number="tg_99999",
-        input_text="hola",
-        message_type="text",
-        platform="telegram",
-    )
+    with patch("app.tracing.recorder.Langfuse.create_trace_id", return_value="b" * 32):
+        recorder = TraceRecorder(repository=repo, langfuse=mock_langfuse)
+        await recorder.start_trace(
+            trace_id="def456",
+            phone_number="tg_99999",
+            input_text="hola",
+            message_type="text",
+            platform="telegram",
+        )
 
-    call_kwargs = mock_langfuse.trace.call_args.kwargs
+    call_kwargs = mock_span.update_trace.call_args.kwargs
     assert call_kwargs.get("metadata", {}).get("platform") == "telegram"
     assert call_kwargs.get("session_id") == "tg_99999"
 
@@ -61,16 +71,21 @@ async def test_start_trace_platform_telegram():
 
 
 async def test_update_trace_tags_called():
-    """update_trace_tags must call langfuse.trace with id and tags."""
+    """update_trace_tags must call root_span.update_trace with the tags."""
     mock_langfuse = MagicMock()
     repo = AsyncMock()
 
     from app.tracing.recorder import TraceRecorder
 
     recorder = TraceRecorder(repository=repo, langfuse=mock_langfuse)
+
+    # Inject a fake root span
+    mock_root_span = MagicMock()
+    recorder._root_spans["trace_xyz"] = mock_root_span
+
     await recorder.update_trace_tags("trace_xyz", ["whatsapp", "math", "time"])
 
-    mock_langfuse.trace.assert_called_once_with(id="trace_xyz", tags=["whatsapp", "math", "time"])
+    mock_root_span.update_trace.assert_called_once_with(tags=["whatsapp", "math", "time"])
 
 
 async def test_update_trace_tags_noop_without_langfuse():
@@ -92,9 +107,12 @@ async def test_update_trace_tags_noop_empty_tags():
     from app.tracing.recorder import TraceRecorder
 
     recorder = TraceRecorder(repository=repo, langfuse=mock_langfuse)
+    mock_root_span = MagicMock()
+    recorder._root_spans["trace_xyz"] = mock_root_span
+
     await recorder.update_trace_tags("trace_xyz", [])
 
-    mock_langfuse.trace.assert_not_called()
+    mock_root_span.update_trace.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

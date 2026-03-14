@@ -152,13 +152,50 @@ class MemoryWatcher:
 
         changed = False
         for content_text, category in to_add:
-            await self._repository.add_memory(content_text, category)
+            mem_id = await self._repository.add_memory(content_text, category)
             logger.info("Synced from file → added: %s", content_text[:80])
+            # Audit log (best-effort)
+            try:
+                from app.provenance.context import get_audit_logger
+                from app.provenance.models import Action, Actor, EntityType
+
+                _al = get_audit_logger()
+                if _al:
+                    await _al.log_mutation(
+                        EntityType.MEMORY,
+                        mem_id,
+                        Action.CREATE,
+                        Actor.FILE_SYNC,
+                        after_snapshot=content_text,
+                    )
+                    await _al.version_memory(mem_id, content_text, Actor.FILE_SYNC)
+            except Exception:
+                pass
             changed = True
 
         for content_text, _category in to_remove:
-            await self._repository.remove_memory(content_text)
+            # Get memory ID before removal for audit
+            _rem_id = await self._repository.remove_memory_return_id(content_text)
+            if _rem_id is None:
+                await self._repository.remove_memory(content_text)
             logger.info("Synced from file → removed: %s", content_text[:80])
+            # Audit log (best-effort)
+            if _rem_id is not None:
+                try:
+                    from app.provenance.context import get_audit_logger
+                    from app.provenance.models import Action, Actor, EntityType
+
+                    _al = get_audit_logger()
+                    if _al:
+                        await _al.log_mutation(
+                            EntityType.MEMORY,
+                            _rem_id,
+                            Action.DELETE,
+                            Actor.FILE_SYNC,
+                            before_snapshot=content_text,
+                        )
+                except Exception:
+                    pass
             changed = True
 
         # Re-sync file to normalize format

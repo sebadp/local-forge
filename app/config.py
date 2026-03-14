@@ -61,7 +61,7 @@ class Settings(BaseSettings):
         return v
 
     # Ollama
-    ollama_base_url: str = "http://ollama:11434"
+    ollama_base_url: str = "http://localhost:11435"
     ollama_model: str = "qwen3:8b"
     system_prompt: str = (
         "You are a helpful personal assistant on WhatsApp. "
@@ -183,6 +183,23 @@ class Settings(BaseSettings):
     github_repo: str | None = None
     audit_hmac_key: str | None = None  # HMAC-SHA256 key for tamper-evident audit trail
     projects_root: str = ""  # Base directory for multi-project workspace (empty = single project)
+
+    # Metrics (Plan 42)
+    metrics_percentiles_enabled: bool = True
+    # NOTE: Percentile calculation loads all values into Python memory.
+    # Disable via METRICS_PERCENTILES_ENABLED=false if memory becomes an issue
+    # (e.g. when span count exceeds ~100K).
+
+    # Ontology (Plan 42)
+    ontology_enabled: bool = True
+
+    # Data Provenance (Plan 44)
+    provenance_enabled: bool = True
+
+    # Operational Automation (Plan 47)
+    automation_enabled: bool = False
+    automation_interval_minutes: int = 15
+    automation_admin_phone: str = ""
 
     model_config = {"env_file": ".env", "env_ignore_empty": True}
 

@@ -18,13 +18,18 @@ class WhatsAppMessage(BaseModel):
     reply_to_message_id: str | None = None
 
 
-class OllamaCheck(BaseModel):
-    available: bool
-
-
 class HealthResponse(BaseModel):
     status: str
-    checks: OllamaCheck
+
+
+class ReadinessChecks(BaseModel):
+    db: str
+    ollama: str
+
+
+class ReadinessResponse(BaseModel):
+    status: str
+    checks: ReadinessChecks
 
 
 class Note(BaseModel):

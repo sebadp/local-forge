@@ -22,3 +22,4 @@ class CommandContext:
     wa_client: Any = field(default=None, repr=False)
     settings: Any = field(default=None, repr=False)
     trace_recorder: Any = field(default=None, repr=False)
+    audit_logger: Any = field(default=None, repr=False)

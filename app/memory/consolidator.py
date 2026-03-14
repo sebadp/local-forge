@@ -90,6 +90,23 @@ async def consolidate_memories(
             if success:
                 removed_count += 1
                 logger.info("Consolidated memory [%d]: %s", memory_id, memory.content[:80])
+                # Audit log (best-effort)
+                try:
+                    from app.provenance.context import get_audit_logger
+                    from app.provenance.models import Action, Actor, EntityType
+
+                    _al = get_audit_logger()
+                    if _al:
+                        await _al.log_mutation(
+                            EntityType.MEMORY,
+                            memory_id,
+                            Action.MERGE,
+                            Actor.LLM_CONSOLIDATOR,
+                            before_snapshot=memory.content,
+                            metadata={"merge_remove_ids": remove_ids},
+                        )
+                except Exception:
+                    pass
                 # Remove embedding (best-effort)
                 try:
                     from app.embeddings.indexer import remove_memory_embedding

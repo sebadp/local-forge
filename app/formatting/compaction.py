@@ -18,6 +18,9 @@ from app.tracing.context import get_current_trace
 
 logger = logging.getLogger(__name__)
 
+# Must match config.Settings.compaction_threshold default
+_DEFAULT_COMPACTION_THRESHOLD = 20000
+
 # Key fields to extract per response type. Extensible by adding new profiles.
 # These are the fields that are most useful for follow-up tool calls.
 _JSON_KEY_FIELDS: list[str] = [
@@ -142,9 +145,7 @@ async def compact_tool_output(
     then falls back to LLM summarization, then to hard truncation.
     """
     if max_length is None:
-        from app.config import Settings
-
-        max_length = Settings().compaction_threshold  # type: ignore[call-arg]
+        max_length = _DEFAULT_COMPACTION_THRESHOLD
 
     if len(text) <= max_length:
         return text

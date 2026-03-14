@@ -46,6 +46,22 @@ async def lifespan(app: FastAPI):
     )
     repository = Repository(db_conn)
 
+    # Ontology: entity registry (knowledge graph)
+    from app.ontology.registry import EntityRegistry
+
+    entity_registry = EntityRegistry(db_conn)
+    app.state.entity_registry = entity_registry
+
+    # Provenance: audit logger (best-effort mutation tracking)
+    from app.provenance.audit import AuditLogger
+
+    audit_logger = AuditLogger(db_conn, enabled=settings.provenance_enabled)
+    app.state.audit_logger = audit_logger
+
+    from app.provenance.context import set_audit_logger
+
+    set_audit_logger(audit_logger)
+
     # Memory
     memory_file = MemoryFile(path="data/MEMORY.md")
     daily_log = DailyLog(memory_dir=settings.memory_dir)
@@ -144,6 +160,35 @@ async def lifespan(app: FastAPI):
     )
     app.state.skill_registry = skill_registry
 
+    # Provenance tool registration
+    if settings.provenance_enabled:
+        from app.provenance.lineage_tool import register as register_provenance
+
+        register_provenance(skill_registry, audit_logger)
+
+    # Background tasks — declared here so cleanup block can always reference them
+    import asyncio as _asyncio
+
+    _ontology_backfill_task: _asyncio.Task[None] | None = None
+    _backfill_task: _asyncio.Task[None] | None = None
+
+    # Ontology tool registration + backfill
+    if settings.ontology_enabled:
+        from app.skills.tools.ontology_tools import register as register_ontology
+
+        register_ontology(skill_registry, entity_registry)
+
+        async def _safe_ontology_backfill() -> None:
+            try:
+                from app.ontology.backfill import run_full_backfill
+
+                counts = await run_full_backfill(db_conn, entity_registry)
+                logger.info("Ontology backfill completed: %s", counts)
+            except Exception:
+                logger.warning("Ontology backfill failed (non-critical)", exc_info=True)
+
+        _ontology_backfill_task = _asyncio.create_task(_safe_ontology_backfill())
+
     # Scheduler Skill
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -226,9 +271,60 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
     # Also run once at startup to clean up pre-existing stale corrections
-    import asyncio as _asyncio
-
     _startup_cleanup_task = _asyncio.create_task(_cleanup_self_corrections())
+
+    # Operational Automation (Plan 47): data-driven triggers
+    if settings.automation_enabled:
+        from app.automation.builtin_rules import seed_builtin_rules
+        from app.automation.evaluator import evaluate_rules as _evaluate_automation
+
+        await seed_builtin_rules(repository)
+
+        # Pick the right platform client for notifications
+        _auto_platform_client: object | None = None
+        if settings.automation_admin_phone.startswith("tg_"):
+            _auto_platform_client = getattr(app.state, "telegram_client", None)
+        else:
+            _auto_platform_client = app.state.whatsapp_client
+
+        # Capture in closure for the scheduler job
+        _auto_repo = repository
+        _auto_settings = settings
+        _auto_ollama = app.state.ollama_client
+        _auto_pclient = _auto_platform_client
+
+        async def _run_automation() -> None:
+            try:
+                count = await _evaluate_automation(
+                    _auto_repo,
+                    platform_client=_auto_pclient,
+                    admin_phone=_auto_settings.automation_admin_phone,
+                    user_phone=(
+                        _auto_settings.allowed_phone_numbers[0]
+                        if _auto_settings.allowed_phone_numbers
+                        else ""
+                    ),
+                    ollama_client=_auto_ollama,
+                    embed_model=_auto_settings.embedding_model,
+                    vec_available=vec_available,
+                )
+                if count:
+                    logger.info("Automation evaluator: %d rule(s) triggered", count)
+            except Exception:
+                logger.exception("Automation evaluator job failed")
+
+        scheduler.add_job(
+            _run_automation,
+            trigger="interval",
+            minutes=settings.automation_interval_minutes,
+            id="automation_evaluator",
+            replace_existing=True,
+        )
+        logger.info(
+            "Operational automation enabled (interval=%d min, %d built-in rules)",
+            settings.automation_interval_minutes,
+            len(await repository.get_all_automation_rules()),
+        )
 
     # Memory file watcher (bidirectional sync)
     memory_watcher = None
@@ -268,7 +364,6 @@ async def lifespan(app: FastAPI):
         logger.warning("Model warmup failed (non-critical)", exc_info=True)
 
     # Backfill embeddings as background task — doesn't block request acceptance
-    _backfill_task = None
     if vec_available and settings.semantic_search_enabled:
 
         async def _safe_backfill() -> None:
@@ -314,12 +409,13 @@ async def lifespan(app: FastAPI):
 
     # Cancel the embedding backfill before tearing down DB/HTTP so it doesn't
     # try to use already-closed resources.
-    if _backfill_task is not None and not _backfill_task.done():
-        _backfill_task.cancel()
-        try:
-            await _backfill_task
-        except _asyncio.CancelledError:
-            pass
+    for _bg_task in (_ontology_backfill_task, _backfill_task):
+        if _bg_task is not None and not _bg_task.done():
+            _bg_task.cancel()
+            try:
+                await _bg_task
+            except _asyncio.CancelledError:
+                pass
 
     await wait_for_in_flight(timeout=30.0)
     if memory_watcher:

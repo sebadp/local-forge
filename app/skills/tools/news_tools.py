@@ -36,7 +36,24 @@ def register(registry: SkillRegistry, repository: Repository) -> None:
 
         content = f"News Preference: User {pref}s {source}."
         logger.info("Saving news preference: %s", content)
-        await repository.add_memory(content, category="news_pref")
+        mem_id = await repository.add_memory(content, category="news_pref")
+        # Audit log (best-effort)
+        try:
+            from app.provenance.context import get_audit_logger
+            from app.provenance.models import Action, Actor, EntityType
+
+            _al = get_audit_logger()
+            if _al:
+                await _al.log_mutation(
+                    EntityType.MEMORY,
+                    mem_id,
+                    Action.CREATE,
+                    Actor.TOOL,
+                    after_snapshot=content,
+                    metadata={"category": "news_pref"},
+                )
+        except Exception:
+            pass
         return f"Memorized: You {pref} {source}."
 
     async def search_news(query: str, time_range: str | None = None) -> str:

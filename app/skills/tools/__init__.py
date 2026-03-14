@@ -67,7 +67,7 @@ def register_builtin_tools(
     if settings is not None and settings.tracing_enabled:
         from app.skills.tools.eval_tools import register as register_eval
 
-        register_eval(registry, repository, ollama_client=ollama_client)
+        register_eval(registry, repository, ollama_client=ollama_client, settings=settings)
 
     if settings is not None and settings.tracing_enabled:
         from app.skills.tools.debug_tools import register as register_debug
@@ -85,3 +85,8 @@ def register_builtin_tools(
         from app.skills.tools.workspace_tools import register as register_workspace
 
         register_workspace(registry, projects_root=getattr(settings, "projects_root", ""))
+
+    if settings is not None and getattr(settings, "automation_enabled", False):
+        from app.skills.tools.automation_tools import register as register_automation
+
+        register_automation(registry, repository)

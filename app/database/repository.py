@@ -32,6 +32,16 @@ class Repository:
     def __init__(self, conn: aiosqlite.Connection):
         self._conn = conn
 
+    @property
+    def conn(self) -> aiosqlite.Connection:
+        """Expose the underlying connection for ontology registry."""
+        return self._conn
+
+    async def ping(self) -> bool:
+        """Lightweight DB liveness check."""
+        await self._conn.execute("SELECT 1")
+        return True
+
     async def commit(self) -> None:
         """Explicit commit for batch operations."""
         await self._conn.commit()
@@ -143,10 +153,15 @@ class Repository:
         row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def add_memory(self, content: str, category: str | None = None) -> int:
+    async def add_memory(
+        self,
+        content: str,
+        category: str | None = None,
+        source_trace_id: str | None = None,
+    ) -> int:
         cursor = await self._conn.execute(
-            "INSERT INTO memories (content, category) VALUES (?, ?)",
-            (content, category),
+            "INSERT INTO memories (content, category, source_trace_id) VALUES (?, ?, ?)",
+            (content, category, source_trace_id),
         )
         await self._conn.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -273,10 +288,15 @@ class Repository:
 
     # --- Notes ---
 
-    async def save_note(self, title: str, content: str) -> int:
+    async def save_note(
+        self,
+        title: str,
+        content: str,
+        source_trace_id: str | None = None,
+    ) -> int:
         cursor = await self._conn.execute(
-            "INSERT INTO notes (title, content) VALUES (?, ?)",
-            (title, content),
+            "INSERT INTO notes (title, content, source_trace_id) VALUES (?, ?, ?)",
+            (title, content, source_trace_id),
         )
         await self._conn.commit()
         return cursor.lastrowid  # type: ignore[return-value]
@@ -325,8 +345,10 @@ class Repository:
         self, memory_id: int, embedding: list[float], *, auto_commit: bool = True
     ) -> None:
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_memories WHERE memory_id = ?", (memory_id,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_memories (memory_id, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_memories (memory_id, embedding) VALUES (?, ?)",
             (memory_id, blob),
         )
         if auto_commit:
@@ -401,8 +423,10 @@ class Repository:
         self, note_id: int, embedding: list[float], *, auto_commit: bool = True
     ) -> None:
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_notes WHERE note_id = ?", (note_id,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_notes (note_id, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_notes (note_id, embedding) VALUES (?, ?)",
             (note_id, blob),
         )
         if auto_commit:
@@ -843,8 +867,10 @@ class Repository:
         self, note_id: int, embedding: list[float], auto_commit: bool = True
     ) -> None:
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_project_notes WHERE note_id = ?", (note_id,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_project_notes (note_id, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_project_notes (note_id, embedding) VALUES (?, ?)",
             (note_id, blob),
         )
         if auto_commit:
@@ -873,8 +899,10 @@ class Repository:
     ) -> None:
         """Store embedding for a tool description (for semantic tool discovery)."""
         blob = self._serialize_vector(embedding)
+        # vec0 virtual tables don't support INSERT OR REPLACE — delete first
+        await self._conn.execute("DELETE FROM vec_tools WHERE tool_name = ?", (tool_name,))
         await self._conn.execute(
-            "INSERT OR REPLACE INTO vec_tools (tool_name, embedding) VALUES (?, ?)",
+            "INSERT INTO vec_tools (tool_name, embedding) VALUES (?, ?)",
             (tool_name, blob),
         )
         if auto_commit:
@@ -1675,13 +1703,16 @@ class Repository:
     # --- Metrics Hardening (Plan 38) ---
 
     async def get_latency_percentiles(
-        self, span_name: str | None = None, days: int = 7
+        self, span_name: str | None = None, days: int = 7, enabled: bool = True
     ) -> list[dict]:
         """Return p50/p95/p99 latency per span name for the last N days.
 
         If span_name is None, returns stats for the most frequent span names (top 10).
         Percentiles computed in Python (SQLite has no PERCENTILE_DISC).
+        If enabled=False, returns [] immediately (no memory allocation).
         """
+        if not enabled:
+            return []
         if span_name:
             cursor = await self._conn.execute(
                 """
@@ -1725,12 +1756,15 @@ class Repository:
                 results.append(_compute_percentiles(sname, [r[0] for r in lat_rows]))
             return results
 
-    async def get_e2e_latency_percentiles(self, days: int = 7) -> list[dict]:
+    async def get_e2e_latency_percentiles(self, days: int = 7, enabled: bool = True) -> list[dict]:
         """Return p50/p95/p99 of end-to-end message processing time from the traces table.
 
         Returns a list with the overall percentiles first, followed by per-message_type
         breakdowns (e.g. text, audio, image, agent) so the caller can display them separately.
+        If enabled=False, returns [] immediately (no memory allocation).
         """
+        if not enabled:
+            return []
         cursor = await self._conn.execute(
             """
             SELECT
@@ -1823,10 +1857,10 @@ class Repository:
         )
         row = await cursor.fetchone()
         stats: dict = {
-            "avg_tool_calls": round(row[0] or 0, 2),
-            "max_tool_calls": row[1] or 0,
-            "no_tool_traces": row[2] or 0,
-            "total_traces": row[3] or 0,
+            "avg_tool_calls": round(row[0] or 0, 2),  # type: ignore[index]
+            "max_tool_calls": row[1] or 0,  # type: ignore[index]
+            "no_tool_traces": row[2] or 0,  # type: ignore[index]
+            "total_traces": row[3] or 0,  # type: ignore[index]
         }
 
         cursor = await self._conn.execute(
@@ -1843,8 +1877,8 @@ class Repository:
             (f"-{days}",),
         )
         row = await cursor.fetchone()
-        stats["avg_llm_iterations"] = round(row[0] or 0, 2)
-        stats["max_llm_iterations"] = row[1] or 0
+        stats["avg_llm_iterations"] = round(row[0] or 0, 2)  # type: ignore[index]
+        stats["max_llm_iterations"] = row[1] or 0  # type: ignore[index]
 
         cursor = await self._conn.execute(
             """
@@ -1936,10 +1970,10 @@ class Repository:
         )
         row = await cursor.fetchone()
         result: dict = {
-            "avg_fill_rate": round((row[0] or 0) * 100, 1),
-            "max_fill_rate": round((row[1] or 0) * 100, 1),
-            "near_limit_count": row[2] or 0,
-            "fill_n": row[3] or 0,
+            "avg_fill_rate": round((row[0] or 0) * 100, 1),  # type: ignore[index]
+            "max_fill_rate": round((row[1] or 0) * 100, 1),  # type: ignore[index]
+            "near_limit_count": row[2] or 0,  # type: ignore[index]
+            "fill_n": row[3] or 0,  # type: ignore[index]
         }
 
         cursor = await self._conn.execute(
@@ -1956,8 +1990,8 @@ class Repository:
             (f"-{days}", f"-{days}"),
         )
         row = await cursor.fetchone()
-        upgraded = row[0] or 0
-        total = max(row[1] or 1, 1)
+        upgraded = row[0] or 0  # type: ignore[index]
+        total = max(row[1] or 1, 1)  # type: ignore[index]
         result["classify_upgrade_rate"] = round(upgraded / total * 100, 1)
         result["classify_upgraded_n"] = upgraded
 
@@ -1975,11 +2009,11 @@ class Repository:
             (f"-{days}",),
         )
         row = await cursor.fetchone()
-        result["avg_memories_retrieved"] = round(row[0] or 0, 1)
-        result["avg_memories_passed"] = round(row[1] or 0, 1)
-        result["avg_memories_returned"] = round(row[2] or 0, 1)
+        result["avg_memories_retrieved"] = round(row[0] or 0, 1)  # type: ignore[index]
+        result["avg_memories_passed"] = round(row[1] or 0, 1)  # type: ignore[index]
+        result["avg_memories_returned"] = round(row[2] or 0, 1)  # type: ignore[index]
         result["memory_relevance_pct"] = (
-            round((row[1] or 0) / (row[0] or 1) * 100, 1) if (row[0] or 0) > 0 else None
+            round((row[1] or 0) / (row[0] or 1) * 100, 1) if (row[0] or 0) > 0 else None  # type: ignore[index]
         )
         return result
 
@@ -2038,7 +2072,7 @@ class Repository:
             (f"-{days}",),
         )
         row = await cursor.fetchone()
-        total = row[0] or 0
+        total = row[0] or 0  # type: ignore[index]
         if total == 0:
             return {"total_planner_sessions": 0}
 
@@ -2052,7 +2086,7 @@ class Repository:
             (f"-{days}",),
         )
         row = await cursor.fetchone()
-        replanned = row[0] or 0
+        replanned = row[0] or 0  # type: ignore[index]
 
         cursor = await self._conn.execute(
             """
@@ -2071,7 +2105,7 @@ class Repository:
             "total_planner_sessions": total,
             "replanned_sessions": replanned,
             "replanning_rate_pct": round(replanned / total * 100, 1),
-            "avg_replans_per_session": round(row[0] or 0, 2),
+            "avg_replans_per_session": round(row[0] or 0, 2),  # type: ignore[index]
         }
 
     async def get_hitl_rate(self, days: int = 7) -> dict:
@@ -2090,9 +2124,9 @@ class Repository:
         )
         row = await cursor.fetchone()
         return {
-            "total_escalations": row[0] or 0,
-            "approved": row[1] or 0,
-            "rejected": row[2] or 0,
+            "total_escalations": row[0] or 0,  # type: ignore[index]
+            "approved": row[1] or 0,  # type: ignore[index]
+            "rejected": row[2] or 0,  # type: ignore[index]
         }
 
     async def get_goal_completion_rate(self, days: int = 7) -> dict:
@@ -2108,6 +2142,115 @@ class Repository:
         )
         row = await cursor.fetchone()
         return {
-            "goal_completion_rate_pct": round((row[0] or 0) * 100, 1),
-            "n": row[1] or 0,
+            "goal_completion_rate_pct": round((row[0] or 0) * 100, 1),  # type: ignore[index]
+            "n": row[1] or 0,  # type: ignore[index]
         }
+
+    # --- Automation Rules (Plan 47) ---
+
+    async def get_active_automation_rules(self) -> list[Any]:
+        cursor = await self._conn.execute(
+            "SELECT id, name, description, condition_type, condition_config, "
+            "action_type, action_config, enabled, cooldown_minutes, "
+            "last_triggered_at, created_at "
+            "FROM automation_rules WHERE enabled = 1"
+        )
+        return list(await cursor.fetchall())
+
+    async def get_automation_rule(self, name: str) -> Any:
+        cursor = await self._conn.execute(
+            "SELECT id, name, description, condition_type, condition_config, "
+            "action_type, action_config, enabled, cooldown_minutes, "
+            "last_triggered_at, created_at "
+            "FROM automation_rules WHERE name = ?",
+            (name,),
+        )
+        return await cursor.fetchone()
+
+    async def get_all_automation_rules(self) -> list[Any]:
+        cursor = await self._conn.execute(
+            "SELECT id, name, description, condition_type, condition_config, "
+            "action_type, action_config, enabled, cooldown_minutes, "
+            "last_triggered_at, created_at "
+            "FROM automation_rules ORDER BY name"
+        )
+        return list(await cursor.fetchall())
+
+    async def toggle_automation_rule(self, name: str, enabled: bool) -> bool:
+        cursor = await self._conn.execute(
+            "UPDATE automation_rules SET enabled = ? WHERE name = ?",
+            (1 if enabled else 0, name),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0  # type: ignore[return-value]
+
+    async def log_automation(
+        self,
+        rule_id: int,
+        condition_value: str,
+        result: str,
+        details: str | None = None,
+    ) -> None:
+        await self._conn.execute(
+            "INSERT INTO automation_log (rule_id, condition_value, action_result, details) "
+            "VALUES (?, ?, ?, ?)",
+            (rule_id, condition_value, result, details),
+        )
+        await self._conn.commit()
+
+    async def update_rule_last_triggered(self, rule_id: int) -> None:
+        await self._conn.execute(
+            "UPDATE automation_rules SET last_triggered_at = datetime('now') WHERE id = ?",
+            (rule_id,),
+        )
+        await self._conn.commit()
+
+    async def get_automation_log(self, rule_name: str | None = None, limit: int = 20) -> list[Any]:
+        if rule_name:
+            cursor = await self._conn.execute(
+                "SELECT al.id, al.rule_id, ar.name, al.triggered_at, "
+                "al.condition_value, al.action_result, al.details "
+                "FROM automation_log al "
+                "JOIN automation_rules ar ON al.rule_id = ar.id "
+                "WHERE ar.name = ? ORDER BY al.triggered_at DESC LIMIT ?",
+                (rule_name, limit),
+            )
+        else:
+            cursor = await self._conn.execute(
+                "SELECT al.id, al.rule_id, ar.name, al.triggered_at, "
+                "al.condition_value, al.action_result, al.details "
+                "FROM automation_log al "
+                "JOIN automation_rules ar ON al.rule_id = ar.id "
+                "ORDER BY al.triggered_at DESC LIMIT ?",
+                (limit,),
+            )
+        return list(await cursor.fetchall())
+
+    async def seed_automation_rule(
+        self,
+        name: str,
+        description: str,
+        condition_type: str,
+        condition_config: str,
+        action_type: str,
+        action_config: str,
+        cooldown_minutes: int = 60,
+    ) -> bool:
+        """Returns True if a new rule was inserted, False if it already existed."""
+        cursor = await self._conn.execute(
+            "INSERT OR IGNORE INTO automation_rules "
+            "(name, description, condition_type, condition_config, "
+            "action_type, action_config, cooldown_minutes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                name,
+                description,
+                condition_type,
+                condition_config,
+                action_type,
+                action_config,
+                cooldown_minutes,
+            ),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0

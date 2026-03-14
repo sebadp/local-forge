@@ -25,6 +25,7 @@ def register(
     registry: SkillRegistry,
     repository: Repository,
     ollama_client: OllamaClient | None = None,
+    settings=None,
 ) -> None:
     """Register all evaluation tools into the skill registry."""
 
@@ -284,9 +285,16 @@ def register(
         The phase_ab span metadata includes embed_ms and searches_ms for Phase A/B breakdown.
         """
         try:
+            percentiles_enabled = settings.metrics_percentiles_enabled if settings else True
             target = None if span_name == "all" else span_name
-            stats = await repository.get_latency_percentiles(target, days=days)
-            e2e = await repository.get_e2e_latency_percentiles(days=days) if span_name == "all" else []
+            stats = await repository.get_latency_percentiles(
+                target, days=days, enabled=percentiles_enabled
+            )
+            e2e = (
+                await repository.get_e2e_latency_percentiles(days=days, enabled=percentiles_enabled)
+                if span_name == "all"
+                else []
+            )
         except Exception:
             logger.exception("get_latency_stats failed")
             return "Error retrieving latency stats."
@@ -342,14 +350,14 @@ def register(
         focus: 'all' | 'tools' | 'tokens' | 'context' | 'agent'
         """
         try:
-            tool_eff   = await repository.get_tool_efficiency(days=days)
+            tool_eff = await repository.get_tool_efficiency(days=days)
             token_cons = await repository.get_token_consumption(days=days)
             redundancy = await repository.get_tool_redundancy(days=days)
-            ctx_qual   = await repository.get_context_quality_metrics(days=days)
-            ctx_rot    = await repository.get_context_rot_risk(days=days)
-            planner    = await repository.get_planner_metrics(days=days)
-            hitl       = await repository.get_hitl_rate(days=days)
-            goal       = await repository.get_goal_completion_rate(days=days)
+            ctx_qual = await repository.get_context_quality_metrics(days=days)
+            ctx_rot = await repository.get_context_rot_risk(days=days)
+            planner = await repository.get_planner_metrics(days=days)
+            hitl = await repository.get_hitl_rate(days=days)
+            goal = await repository.get_goal_completion_rate(days=days)
         except Exception:
             logger.exception("get_agent_stats failed")
             return "Error retrieving agent stats."
@@ -372,7 +380,7 @@ def register(
                     lines.append("*Tool Error Rates:*")
                     for t in errors[:5]:
                         lines.append(
-                            f"- `{t['tool']}`: {t['error_rate']*100:.1f}%"
+                            f"- `{t['tool']}`: {t['error_rate'] * 100:.1f}%"
                             f" ({t['errors']}/{t['total']})"
                         )
             if redundancy:
@@ -415,11 +423,15 @@ def register(
                 lines.append("")
                 lines.append("*Context Rot Risk:*")
                 for b in ctx_rot:
-                    flag = " ⚠️" if (
-                        b["bucket"] == "high_context"
-                        and len(ctx_rot) == 2
-                        and ctx_rot[0]["avg_guardrail_pass"] - b["avg_guardrail_pass"] > 5
-                    ) else ""
+                    flag = (
+                        " ⚠️"
+                        if (
+                            b["bucket"] == "high_context"
+                            and len(ctx_rot) == 2
+                            and ctx_rot[0]["avg_guardrail_pass"] - b["avg_guardrail_pass"] > 5
+                        )
+                        else ""
+                    )
                     lines.append(
                         f"- {b['bucket']} (fill={b['avg_fill_rate_pct']}%):"
                         f" guardrail_pass={b['avg_guardrail_pass']}%  n={b['n']}{flag}"

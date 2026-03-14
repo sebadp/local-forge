@@ -46,6 +46,11 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Telegram Integration (multi-platform, PlatformClient Protocol, Adapter pattern) | [`35-telegram.md`](35-telegram.md) | Exec Plan 35 |
 | Performance Optimization (parallelization, indexes, event loop, startup) | [`36-performance_optimization.md`](36-performance_optimization.md) | Performance |
 | Métricas y Benchmarking (token budget, guardrails, LLM-as-judge, eval dataset) | [`37-metricas_benchmarking.md`](37-metricas_benchmarking.md) | Eval |
+| Ontology Data Model / Knowledge Graph (entities, relations, BFS traversal, context enrichment) | [`42-ontology.md`](42-ontology.md) | Exec Plan 42 |
+| Data Provenance & Lineage (audit log, memory versioning, lineage tools) | [`44-data_provenance.md`](44-data_provenance.md) | Exec Plan 44 |
+| Token Accuracy (runtime calibration via Ollama prompt_eval_count, EMA per-model) | [`45-token_accuracy.md`](45-token_accuracy.md) | Exec Plan 45 |
+| Deployment Maturity (health checks, Docker healthcheck, profiles, CI/CD release) | [`46-deployment_maturity.md`](46-deployment_maturity.md) | Exec Plan 46 |
+| Operational Automation (data-driven triggers, metric alerts, self-healing) | [`47-operational_automation.md`](47-operational_automation.md) | Exec Plan 47 |
 
 ## Cómo crear un nuevo walkthrough
 

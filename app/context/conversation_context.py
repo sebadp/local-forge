@@ -89,6 +89,10 @@ class ConversationContext:
     # Token budget estimate (populated after build)
     token_estimate: int = 0
 
+    # Knowledge graph enrichment (best-effort, populated if entity_registry available)
+    graph_enrichment: str = ""
+    """Related entities found via ontology graph traversal (best-effort)."""
+
     @classmethod
     async def build(
         cls,
@@ -100,6 +104,7 @@ class ConversationContext:
         settings: Settings | None = None,
         daily_log: DailyLog | None = None,
         vec_available: bool = False,
+        entity_registry: object | None = None,
     ) -> ConversationContext:
         """Build a ConversationContext by fetching all data in parallel.
 
@@ -290,6 +295,20 @@ class ConversationContext:
             extra={"search_stats": search_stats, "phone": phone_number},
         )
 
+        # Best-effort knowledge graph enrichment (no blocking if registry unavailable)
+        graph_enrichment = ""
+        if entity_registry is not None and user_text:
+            try:
+                from app.ontology.enricher import enrich_context
+
+                enrichment = await enrich_context(entity_registry, user_text, budget_chars=1000)  # type: ignore[arg-type]
+                if enrichment.entities_found > 0:
+                    graph_enrichment = enrichment.extra_text
+            except Exception:
+                logger.debug(
+                    "ConversationContext: graph enrichment failed (best-effort)", exc_info=True
+                )
+
         return cls(
             phone_number=phone_number,
             user_text=user_text,
@@ -306,4 +325,5 @@ class ConversationContext:
             query_embedding=query_embedding,
             search_stats=search_stats,
             build_timing=build_timing,
+            graph_enrichment=graph_enrichment,
         )

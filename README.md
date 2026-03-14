@@ -23,7 +23,7 @@ Si estás buscando dar el salto al desarrollo con IA, en este repositorio vas a 
 - **Multimodalidad Local**: Soporte nativo y gratuito para notas de voz y mensajes de WhatsApp o Telegram (transcripción con Whisper) e imágenes (analizadas con LLaVA).
 - **Observabilidad en IA**: Integración con Langfuse para trazar *prompts*, latencias, consumo de *tokens* y el flujo de llamadas a herramientas.
 
-Soporta WhatsApp Cloud API y Telegram Bot API simultáneamente, con feature flags independientes por plataforma. Dockerizado, cubierto con +600 tests y listo para experimentar con costo de operación **cero**.
+Soporta WhatsApp Cloud API y Telegram Bot API simultáneamente, con feature flags independientes por plataforma. Dockerizado, cubierto con 785+ tests y listo para experimentar con costo de operación **cero**.
 
 ## Quickstart
 
@@ -32,17 +32,19 @@ Soporta WhatsApp Cloud API y Telegram Bot API simultáneamente, con feature flag
 cp .env.example .env
 # Editar .env con tus credenciales (ver SETUP.md para detalle)
 
-# 2. Levantar
-docker compose up -d
+# 2. Levantar (profile obligatorio: dev o prod)
+docker compose --profile dev up -d
 
 # 3. Descargar modelos
-docker compose exec ollama ollama pull qwen3:8b
-docker compose exec ollama ollama pull llava:7b
-docker compose exec ollama ollama pull nomic-embed-text
+docker compose --profile dev exec ollama ollama pull qwen3:8b
+docker compose --profile dev exec ollama ollama pull llava:7b
+docker compose --profile dev exec ollama ollama pull nomic-embed-text
 
 # 4. Configurar webhook en Meta Developer Portal
 #    Callback URL: https://tu-dominio-ngrok/webhook
 ```
+
+> **Profiles:** `dev` incluye Ollama + ngrok + Langfuse. `prod` solo localforge + Langfuse (Ollama y túnel son externos). Sin `--profile` da "no service selected".
 
 Ver [SETUP.md](SETUP.md) para la guía completa paso a paso.
 
@@ -119,8 +121,16 @@ app/
 ├── tracing/
 │   ├── context.py           # ContextVars locales para aislar asincronismo
 │   └── recorder.py          # Envia spans y scores a Langfuse & SQLite (Best-effort)
-└── health/
-    └── router.py            # GET /health
+├── health/
+│   └── router.py            # GET /health (liveness) + GET /ready (readiness)
+├── guardrails/              # Validación pre-entrega (checks determinísticos + LLM)
+├── context/                 # Context engineering (token budget, ContextBuilder XML)
+├── eval/                    # Dataset vivo, prompt versioning, auto-evolución
+├── agent/                   # Planner-Orchestrator, workers, HitL, persistence
+├── security/                # PolicyEngine (YAML), AuditTrail (SHA-256)
+├── ontology/                # Knowledge graph (entidades + relaciones SQLite)
+├── provenance/              # Data lineage y audit logging
+└── automation/              # Motor de reglas IF/THEN con APScheduler
 
 skills/                      # Definiciones de skills (SKILL.md)
 ├── datetime/SKILL.md
@@ -168,16 +178,28 @@ skills/                      # Definiciones de skills (SKILL.md)
 
 ### Base de datos
 
-SQLite con 6 tablas + 2 tablas virtuales:
+SQLite con tablas core + tablas de features + tablas virtuales (sqlite-vec):
 
+**Core:**
 - **conversations** — una por número de teléfono
 - **messages** — historial completo con `wa_message_id`
 - **memories** — datos del usuario (soft-delete con `active` flag)
 - **summaries** — resúmenes automáticos de conversaciones largas
 - **notes** — notas del usuario (title, content) via skill de notas
 - **processed_messages** — deduplicación atómica de webhooks (INSERT OR IGNORE)
-- **vec_memories** — embeddings de memorias (sqlite-vec, float[768])
-- **vec_notes** — embeddings de notas (sqlite-vec, float[768])
+
+**Features:**
+- **projects**, **project_tasks**, **project_activity**, **project_notes** — gestión de proyectos
+- **traces**, **trace_spans**, **trace_scores** — observabilidad y tracing
+- **eval_dataset**, **eval_dataset_tags** — dataset vivo de evaluación
+- **prompt_versions** — versionado de prompts con activación controlada
+- **entities**, **entity_relations** — knowledge graph (ontología)
+- **entity_audit_log**, **memory_versions** — data provenance
+- **automation_rules**, **automation_log** — motor de reglas
+- **conversation_state** — sticky categories y estado por conversación
+
+**Vectoriales (sqlite-vec):**
+- **vec_memories**, **vec_notes**, **vec_project_notes** — embeddings float[768]
 
 El archivo `data/MEMORY.md` es **bidireccional**: los cambios se sincronizan en ambas direcciones entre el archivo y SQLite.
 
@@ -227,7 +249,7 @@ Variables de entorno (ver [.env.example](.env.example)):
 
 | Variable | Descripción | Default |
 |----------|-------------|---------|
-| `OLLAMA_BASE_URL` | URL de Ollama | `http://ollama:11434` |
+| `OLLAMA_BASE_URL` | URL de Ollama | `http://localhost:11435` |
 | `OLLAMA_MODEL` | Modelo de chat | `qwen3:8b` |
 | `VISION_MODEL` | Modelo de visión | `llava:7b` |
 | `SYSTEM_PROMPT` | Prompt del sistema | (ver .env.example) |
@@ -277,10 +299,10 @@ make test
 .venv/bin/python -m pytest tests/ -v
 
 # Con Docker
-docker compose run --rm localforge python -m pytest tests/ -v
+docker compose --profile dev run --rm localforge python -m pytest tests/ -v
 ```
 
-655 tests cubriendo: repository, conversation manager, comandos, parser, markdown memory, summarizer, daily logs, memory flush, session snapshots, consolidator, embeddings, sqlite-vec, semantic search, memory watcher, webhook (verificación, mensajes, comandos), health check, cliente Ollama, cliente WhatsApp, validación de firma, skill loader, skill registry, tool executor, tool router, MCP, cliente Telegram, parser Telegram, formatter HTML, platform adapter, y cada skill (datetime, calculator, weather, notes, search, news, scheduler, tools).
+785+ tests cubriendo: repository, conversation manager, comandos, parser, markdown memory, summarizer, daily logs, memory flush, session snapshots, consolidator, embeddings, sqlite-vec, semantic search, memory watcher, webhook (verificación, mensajes, comandos), health/readiness, cliente Ollama, cliente WhatsApp, validación de firma, skill loader, skill registry, tool executor, tool router, MCP, cliente Telegram, parser Telegram, formatter HTML, platform adapter, guardrails, tracing, eval dataset, prompt versioning, agent loop, planner, workers, security (policy engine, audit trail), context builder, token estimator, ontology, provenance, automation, y cada skill (datetime, calculator, weather, notes, search, news, scheduler, tools, projects, eval, debug, selfcode, shell, workspace, git, expand).
 
 ## Desarrollo local
 
@@ -300,7 +322,7 @@ make test       # pytest
 
 ## CI/CD
 
-Tres jobs en GitHub Actions (`.github/workflows/ci.yml`), trigger en push/PR a `master`:
+Tres jobs en GitHub Actions (`.github/workflows/ci.yml`), trigger en push/PR a `main`:
 
 | Job | Qué hace |
 |-----|----------|
@@ -317,17 +339,20 @@ Requiere configurar el secret `GEMINI_API_KEY` en GitHub → Settings → Secret
 ## Docker
 
 ```bash
-# Levantar todo
-docker compose up -d
+# Levantar todo (dev incluye Ollama + ngrok)
+docker compose --profile dev up -d
 
 # Con GPU NVIDIA
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile dev up -d
+
+# Parar todo
+docker compose --profile dev down
 
 # Ver logs
-docker compose logs -f localforge
+docker compose --profile dev logs -f localforge
 
 # Rebuild después de cambios
-docker compose up -d --build localforge
+docker compose --profile dev up -d --build localforge
 ```
 
 El container corre como usuario no-root (`appuser`, UID=1000) para que los archivos en `data/` tengan los permisos correctos. Si venís de una versión anterior donde `data/` quedó como root, corregí los permisos una vez con:
