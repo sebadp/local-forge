@@ -80,11 +80,14 @@ async def enrich_context(
 
         trace = get_current_trace()
         if trace:
-            async with trace.span("ontology:enrich", kind="span") as span:
-                span.set_input({"query": query[:200], "depth": depth})
-                span.set_output(
-                    {"entities_found": result.entities_found, "types": result.types_found}
-                )
+            try:
+                async with trace.span("ontology:enrich", kind="span") as span:
+                    span.set_input({"query": query[:200], "depth": depth})
+                    span.set_output(
+                        {"entities_found": result.entities_found, "types": result.types_found}
+                    )
+            except Exception:
+                logger.debug("Failed to record enrichment span", exc_info=True)
 
         return result
     except Exception:

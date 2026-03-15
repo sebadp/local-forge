@@ -343,7 +343,7 @@ async def _run_eval(..., use_langfuse=True):
     # 3. Si --langfuse: crear traces + scores en Langfuse
     for r in results:
         lf.start_span(trace_context={"trace_id": lf_trace_id}, name="eval_run", ...)
-        lf.create_score(trace_id=lf_trace_id, name="correctness", value=1.0/0.0)
+        lf.create_score(trace_id=lf_trace_id, name="correctness", value=1.0)  # or 0.0 if failed
 
     # 4. Resultados: tabla + accuracy + exit code
     #    Exit 0 = pass, Exit 1 = fail (para CI)

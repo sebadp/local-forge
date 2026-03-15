@@ -50,7 +50,7 @@ Sistema de evaluación automatizada que reemplaza el testing manual con ~82 test
 
 ### 1. Seed: poblar el dataset
 
-`seed_eval_dataset.py` define 82 `EvalCase` dataclasses organizados en 14 secciones:
+`seed_eval_dataset.py` define 82 `EvalCase` dataclasses organizados en 16 secciones:
 
 ```
 chat(5) math(8) time(8) weather(4) search(4) notes(7) projects(12)

@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,8 @@ async def get_active_prompt(
             if row:
                 _active_prompts[prompt_name] = row["content"]
             else:
-                # Try Langfuse prompt management
-                langfuse_content = _try_langfuse_prompt(prompt_name)
+                # Try Langfuse prompt management (sync call → offload to thread)
+                langfuse_content = await asyncio.to_thread(_try_langfuse_prompt, prompt_name)
                 if langfuse_content:
                     _active_prompts[prompt_name] = langfuse_content
                 else:

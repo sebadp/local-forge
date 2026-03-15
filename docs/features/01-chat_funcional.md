@@ -90,7 +90,7 @@ El usuario envía un mensaje de texto por WhatsApp y recibe una respuesta genera
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
 | Ollama local | OpenAI API / Anthropic cloud | Costo cero, privacidad, sin dependencia de red externa |
-| qwen3.5:9b como modelo default | llama3.1, mistral | Mejor rendimiento calidad/latencia en 8B params |
+| qwen3.5:9b como modelo default | llama3.1, mistral | Mejor rendimiento calidad/latencia en 9B params |
 | Historial en memoria primero | SQLite desde el inicio | Iterar rápido en Fase 1, migrar a DB en Fase 2 |
 | FastAPI lifespan pattern | startup events | Permite cleanup limpio (graceful shutdown) |
 | HMAC signature validation | IP whitelisting | Estándar de WhatsApp Cloud API, más seguro |

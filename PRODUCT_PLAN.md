@@ -538,7 +538,7 @@ vec_notes (sqlite-vec virtual table)
 
 | Modelo | Params | RAM Mín. | Caso de uso | Español | Tools |
 |---|---|---|---|---|---|
-| `qwen3.5:9b` | 8B | 8GB | **Recomendado — chat + tools** | Excelente | Sí |
+| `qwen3.5:9b` | 9B | 8GB | **Recomendado — chat + tools** | Excelente | Sí |
 | `llava:7b` | 7B | 8GB | Multimodal — imágenes | Limitado | No |
 | `nomic-embed-text` | 137M | 1GB | Embeddings (768 dims) | Sí | — |
 | `llama3.2:8b` | 8B | 8GB | Alternativa chat | Bueno | Sí |

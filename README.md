@@ -365,7 +365,7 @@ sudo chown -R $(id -u):$(id -g) data/
 
 | Modelo | Params | RAM | Español | Uso |
 |--------|--------|-----|---------|-----|
-| `qwen3.5:9b` | 8B | 8GB | Excelente | Chat + tool calling |
+| `qwen3.5:9b` | 9B | 8GB | Excelente | Chat + tool calling |
 | `llava:7b` | 7B | 8GB | Limitado | Vision (imágenes) |
 | `nomic-embed-text` | 137M | 1GB | Si | Embeddings (768 dims) |
 | `llama3.2:8b` | 8B | 8GB | Bueno | Chat alternativo |

@@ -49,7 +49,7 @@ LocalForge usa **Langfuse v3** como plataforma de observabilidad. Pero Langfuse 
 
 ### Cómo funcionan los prompts en LocalForge
 
-Los prompts se almacenan en **tres capas** (en orden de prioridad):
+Los prompts se almacenan en **cuatro capas** (en orden de prioridad):
 
 1. **Cache en memoria** (`_active_prompts` dict) — más rápido
 2. **SQLite** (`prompt_versions` tabla) — persistente, con historial

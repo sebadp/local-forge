@@ -127,7 +127,7 @@ async def lifespan(app: FastAPI):
                     )
                 logger.info("Synced %d default prompts to Langfuse", len(PROMPT_DEFAULTS))
             except Exception:
-                logger.debug("Failed to sync default prompts to Langfuse", exc_info=True)
+                logger.warning("Failed to sync default prompts to Langfuse", exc_info=True)
     else:
         app.state.trace_recorder = None
 

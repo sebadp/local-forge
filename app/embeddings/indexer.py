@@ -97,6 +97,18 @@ async def backfill_embeddings(
     trace = get_current_trace()
 
     count = 0
+    _span_mgr = None
+    _span = None
+    if trace:
+        try:
+            _span_mgr = trace.span("embedding:backfill", kind="span")
+            _span = await _span_mgr.__aenter__()
+            _span.set_input({"total_unembedded": len(unembedded)})
+        except Exception:
+            _span_mgr = None
+            _span = None
+            logger.debug("Failed to start backfill span", exc_info=True)
+
     for i in range(0, len(unembedded), BATCH_SIZE):
         batch = unembedded[i : i + BATCH_SIZE]
         valid = [(mem_id, content[:_MAX_EMBED_CHARS]) for mem_id, content in batch if content]
@@ -118,13 +130,12 @@ async def backfill_embeddings(
     if count:
         logger.info("Backfilled %d memory embeddings", count)
 
-    if trace and count:
+    if _span_mgr is not None and _span is not None:
         try:
-            async with trace.span("embedding:backfill", kind="span") as span:
-                span.set_input({"total_unembedded": len(unembedded)})
-                span.set_output({"embedded_count": count})
+            _span.set_output({"embedded_count": count})
+            await _span_mgr.__aexit__(None, None, None)
         except Exception:
-            logger.debug("Failed to record backfill span", exc_info=True)
+            logger.debug("Failed to finish backfill span", exc_info=True)
 
     return count
 

@@ -57,7 +57,7 @@ Lo que debió pasar:
 
 ### 2.2 Modelos más chicos hallucinan más
 
-Usamos **qwen3.5:9b** (8 mil millones de parámetros) que corre localmente. Es un modelo
+Usamos **qwen3.5:9b** (9 mil millones de parámetros) que corre localmente. Es un modelo
 capaz, pero tiene menos "paciencia" para cadenas largas de tool calls comparado con
 modelos más grandes (GPT-4, Claude, Qwen3-32B). A veces toma atajos y responde con
 lo que infiere del contexto parcial.

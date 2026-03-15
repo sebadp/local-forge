@@ -1701,7 +1701,9 @@ async def _handle_message(
                         repository=repository,
                         failed_check_names=failed_checks_for_curation or None,
                         trace_recorder=recorder,
-                        primary_category=pre_classified[0] if pre_classified else None,
+                        primary_category=pre_classified[0]
+                        if pre_classified and pre_classified[0] != "none"
+                        else None,
                     )
                 )
             )

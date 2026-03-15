@@ -34,6 +34,18 @@ async def evaluate_rules(
     trace = get_current_trace()
 
     triggered = 0
+    _span_mgr = None
+    _span = None
+    if trace:
+        try:
+            _span_mgr = trace.span("automation:evaluate", kind="span")
+            _span = await _span_mgr.__aenter__()
+            _span.set_input({"rule_count": len(rows)})
+        except Exception:
+            _span_mgr = None
+            _span = None
+            logger.debug("Failed to start automation span", exc_info=True)
+
     for row in rows:
         try:
             rule = AutomationRule.from_row(tuple(row))
@@ -79,13 +91,12 @@ async def evaluate_rules(
             result,
         )
 
-    if trace:
+    if _span_mgr is not None and _span is not None:
         try:
-            async with trace.span("automation:evaluate", kind="span") as span:
-                span.set_input({"rule_count": len(rows)})
-                span.set_output({"triggered": triggered})
+            _span.set_output({"triggered": triggered})
+            await _span_mgr.__aexit__(None, None, None)
         except Exception:
-            logger.debug("Failed to record automation span", exc_info=True)
+            logger.debug("Failed to finish automation span", exc_info=True)
 
     return triggered
 
