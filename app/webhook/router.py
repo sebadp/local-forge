@@ -605,7 +605,7 @@ def _build_context(
     """Build LLM context from pre-fetched data (sync, no DB calls).
 
     Consolidates context into a single system message with XML-delimited sections
-    for better attention focus in qwen3:8b.
+    for better attention focus in qwen3.5:9b.
     """
     from app.context.context_builder import ContextBuilder
 

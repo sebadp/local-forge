@@ -1,7 +1,7 @@
 # Testing Manual: UX y Multimedia
 
 > **Feature documentada**: [`docs/features/05-ux_multimedia.md`](../features/05-ux_multimedia.md)
-> **Requisitos previos**: Container corriendo, modelos `qwen3:8b` y `llava:7b` descargados en Ollama.
+> **Requisitos previos**: Container corriendo, modelos `qwen3.5:9b` y `llava:7b` descargados en Ollama.
 
 ---
 

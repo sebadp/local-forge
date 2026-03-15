@@ -2,7 +2,7 @@
 
 ## 1. Objetivo y Contexto
 
-LocalForge usa qwen3:8b (32K context window) como LLM principal. El contexto se construye
+LocalForge usa qwen3.5:9b (32K context window) como LLM principal. El contexto se construye
 inyectando múltiples bloques (system prompt, perfil, memorias, notas, daily logs,
 capabilities, summary, historial de 20 mensajes) sin medir cuántos tokens consume ni
 cuánto de eso es realmente relevante para el mensaje actual.
@@ -19,7 +19,7 @@ relevancia. Inyectamos capabilities incluso cuando no hay tools. El historial se
 crudo (20 msgs) sin compresión. Los system messages son planos sin estructura.
 
 **Objetivo:** Reducir el contexto al mínimo de alta señal por request, medir el uso,
-y estructurar las inyecciones para maximizar la comprensión de qwen3:8b.
+y estructurar las inyecciones para maximizar la comprensión de qwen3.5:9b.
 
 ## 2. Alcance
 
@@ -33,7 +33,7 @@ y estructurar las inyecciones para maximizar la comprensión de qwen3:8b.
 - **Agent scratchpad**: activar el campo `scratchpad` de `ConversationContext` para persistir estado entre rounds del agente
 
 ### Out of Scope
-- Cambiar el modelo (qwen3:8b se queda)
+- Cambiar el modelo (qwen3.5:9b se queda)
 - Prompt templates por intent category (futura iteración)
 - Sub-agent architectures (ya implementado parcialmente con planner-orchestrator)
 - Role isolation para contenido externo (seguridad, diferente prioridad)
@@ -65,14 +65,14 @@ y estructurar las inyecciones para maximizar la comprensión de qwen3:8b.
 
 ### ¿Por qué consolidar system messages en lugar de dejarlos separados?
 
-Ollama (con qwen3:8b) procesa múltiples `role=system` como bloques separados de instrucciones.
+Ollama (con qwen3.5:9b) procesa múltiples `role=system` como bloques separados de instrucciones.
 La atención se fragmenta. Anthropic recomienda explícitamente usar XML tags o Markdown headers
 dentro de un solo system message para que el modelo pueda "navegar" secciones. Con modelos
 pequeños esto es aún más crítico porque el attention budget es limitado.
 
 ### ¿Por qué chars/4 como estimador de tokens y no un tokenizer real?
 
-qwen3:8b usa un tokenizer BPE propio. Integrar tiktoken o el tokenizer de Hugging Face
+qwen3.5:9b usa un tokenizer BPE propio. Integrar tiktoken o el tokenizer de Hugging Face
 agrega dependencia pesada. chars/4 es un proxy aceptable (±20%) para logging y alertas.
 Si en el futuro se necesita precisión, se puede swapear por el tokenizer real sin cambiar
 la interfaz.
@@ -95,7 +95,7 @@ futuros campos se propaguen sin tocar el router.
 
 El scratchpad es un espacio libre donde el agente escribe notas entre rounds. Hacerlo
 structured (JSON/dataclass) requiere que el LLM genere datos válidos y parsear, lo cual
-falla con qwen3:8b ~20% del tiempo. Un string libre es más robusto.
+falla con qwen3.5:9b ~20% del tiempo. Un string libre es más robusto.
 
 ## 5. Restricciones
 

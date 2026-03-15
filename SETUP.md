@@ -115,7 +115,7 @@ ALLOWED_PHONE_NUMBERS=5491112345678
 
 # === Ollama ===
 OLLAMA_BASE_URL=http://localhost:11435
-OLLAMA_MODEL=qwen3:8b
+OLLAMA_MODEL=qwen3.5:9b
 
 # === ngrok ===
 NGROK_AUTHTOKEN=2xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -258,7 +258,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile dev up 
 
 ```bash
 # Chat (obligatorio)
-docker compose --profile dev exec ollama ollama pull qwen3:8b
+docker compose --profile dev exec ollama ollama pull qwen3.5:9b
 
 # Vision (para imágenes)
 docker compose --profile dev exec ollama ollama pull llava:7b
@@ -462,7 +462,7 @@ docker compose --profile dev logs -f ngrok
 docker compose --profile dev restart localforge
 
 # Cambiar modelo
-docker compose --profile dev exec ollama ollama pull qwen3:8b
+docker compose --profile dev exec ollama ollama pull qwen3.5:9b
 # Luego cambiar OLLAMA_MODEL en .env y reiniciar localforge
 
 # Listar modelos descargados

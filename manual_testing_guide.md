@@ -24,7 +24,7 @@ Confirmar estas líneas antes de testear cualquier feature:
 | `MCP initialized: N server(s), M tool(s)` | MCP conectado |
 | `Scheduler started` | APScheduler activo |
 | `Restored N cron jobs from database` | Cron jobs persistidos re-registrados |
-| `Model warmup complete` | qwen3:8b y nomic-embed-text calientes |
+| `Model warmup complete` | qwen3.5:9b y nomic-embed-text calientes |
 
 **Verificar tests automatizados:**
 ```bash
@@ -535,6 +535,36 @@ sqlite3 data/localforge.db "SELECT entry_type, COUNT(*) FROM eval_dataset GROUP 
 # Debe mostrar: failure, golden_candidate (y correction si hubo correcciones)
 ```
 
+### 18f. Benchmark offline (regression eval)
+
+```bash
+# Seed dataset (primera vez o tras cambios en seed_eval_dataset.py)
+make eval-seed-clear
+
+# Correr classify (rapido, ~30s, expect >=90%)
+make eval-classify
+
+# Correr e2e con detalle de fallas (lento, ~8min)
+make eval-e2e-verbose
+
+# Correr e2e con sync a Langfuse (genera traces con generation spans + experiment run)
+make eval-langfuse
+
+# Correr e2e con run name custom para comparar entre corridas
+.venv/bin/python scripts/run_eval.py --mode e2e --langfuse --run-name "post-prompt-fix-v2"
+```
+
+**Esperado**:
+- `classify` >= 90% (97%+ con los ejemplos actuales)
+- `e2e`: tool-dependent entries pasan por tool match determinístico, chat entries via LLM-as-judge QAG
+- Con `--langfuse`: cada entry genera trace con 2 generation spans (model_response + judge) con token metrics
+- Dataset Runs visibles en Langfuse Experiments para comparar entre corridas
+
+**Flags útiles**:
+- `-v` / `--verbose`: detalle por entry (actual response, judge reasoning, tools, latency)
+- `--section math`: filtrar por sección
+- `--run-name NAME`: nombrar corrida en Langfuse (default: auto-generado)
+
 ---
 
 ## 19. Rate limiting y graceful shutdown
@@ -670,6 +700,9 @@ Marcar cada ítem antes de declarar la rama lista para merge/release:
 - [ ] `trace_scores` contiene scores de guardrails para respuestas recientes
 - [ ] Reacciones (👍/👎) guardan scores con `source='user'`
 - [ ] `eval_dataset` acumula entradas (failure + golden_candidate)
+- [ ] `make eval-classify` pasa (>=90%)
+- [ ] `make eval-e2e-verbose` muestra detalle de fallas (criteria, tools, actual response)
+- [ ] `make eval-langfuse` genera traces con generation spans en Langfuse
 
 ### Graceful degradation
 - [ ] Sin nomic-embed-text: app funciona con fallback

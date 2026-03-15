@@ -21,7 +21,7 @@ Ollama ya devuelve `prompt_eval_count` (tokens de input reales) en cada respuest
 1. **Runtime calibration**: usar `prompt_eval_count` de Ollama para calcular `actual_tokens / estimated_tokens` ratio y ajustar el proxy dinámicamente
 2. **Token ratio cache**: `_token_ratio` module-level que se auto-calibra con cada respuesta (exponential moving average)
 3. **Estimator mejorado**: `estimate_tokens(text) → int` que usa el ratio calibrado en lugar de `len(text) / 4`
-4. **Per-model ratios**: cache keyed por modelo (qwen3:8b puede tener ratio diferente a llava:7b)
+4. **Per-model ratios**: cache keyed por modelo (qwen3.5:9b puede tener ratio diferente a llava:7b)
 5. **Observabilidad**: log del ratio actual y drift en cada calibración
 6. **Fallback**: si no hay datos de calibración aún, mantener `chars/4` como default
 

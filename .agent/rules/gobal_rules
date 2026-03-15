@@ -21,7 +21,7 @@ Global Antigravity rules define how Agent behaves across all your workspaces. Us
 2. My internal tracking and logging is JSON structured. Do not use plain print, use `logging.getLogger(__name__)`.
 3. Use Pydantic models for data validation.
 4. Always run `make check` (ruff format, ruff check, mypy, pytest) before pushing code or concluding a structural change to verify no regressions.
-5. If using Ollama, prefer `qwen3:8b` for tool calling and chat, and `llava:7b` for vision. Do not use `think: True` when tool calling payloads are present.
+5. If using Ollama, prefer `qwen3.5:9b` for tool calling and chat, and `llava:7b` for vision. Do not use `think: True` when tool calling payloads are present.
 
 ## Architecture Constraints
 1. Do not use Baileys or unofficial WhatsApp libraries; rely exclusively on Meta's WhatsApp Cloud API.

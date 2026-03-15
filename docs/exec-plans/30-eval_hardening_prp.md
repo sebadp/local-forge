@@ -55,11 +55,11 @@
 
 ### Phase 2: Timeout configurable para LLM judges
 
-**Objetivo:** Que `guardrails_llm_checks=True` realmente funcione con qwen3:8b local.
+**Objetivo:** Que `guardrails_llm_checks=True` realmente funcione con qwen3.5:9b local.
 
 - [x] Agregar en `app/config.py`:
   ```python
-  guardrails_llm_timeout: float = 3.0  # segundos; 0.5 era demasiado bajo para qwen3:8b
+  guardrails_llm_timeout: float = 3.0  # segundos; 0.5 era demasiado bajo para qwen3.5:9b
   ```
 - [x] Modificar `run_guardrails()` en `pipeline.py`:
   ```python

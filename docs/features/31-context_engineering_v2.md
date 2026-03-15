@@ -2,7 +2,7 @@
 
 ## Resumen
 
-LocalForge injected de 6-7 system messages separados a qwen3:8b sin medir cuántos tokens consumía
+LocalForge injected de 6-7 system messages separados a qwen3.5:9b sin medir cuántos tokens consumía
 ni filtrar por relevancia. Context Engineering v2 implementa 7 optimizaciones que reducen el
 contexto al mínimo de alta señal por request.
 
@@ -70,13 +70,13 @@ contexto al mínimo de alta señal por request.
 
 ### Un solo system message vs múltiples
 
-Ollama con qwen3:8b fragmenta la atención entre múltiples `role=system` blocks. Consolidar en
+Ollama con qwen3.5:9b fragmenta la atención entre múltiples `role=system` blocks. Consolidar en
 uno con XML tags permite al modelo "navegar" secciones estructuradas. Con modelos 8B esto es
 crítico porque el attention budget es limitado.
 
 ### chars/4 como estimador
 
-qwen3:8b usa BPE propio. Integrar el tokenizer real agrega dependencia pesada. chars/4 da ±20%
+qwen3.5:9b usa BPE propio. Integrar el tokenizer real agrega dependencia pesada. chars/4 da ±20%
 de precisión — suficiente para logging y alertas. Si se necesita precisión, el swap es trivial.
 
 ### Ventana deslizante vs summarization on-the-fly
@@ -91,7 +91,7 @@ de embeddings reales. 1.0 es conservador (acepta todo) hasta que se calibre con 
 
 ### Scratchpad como string libre
 
-Hacerlo structured (JSON) requiere que qwen3:8b genere output válido y parsearlo — falla ~20%
+Hacerlo structured (JSON) requiere que qwen3.5:9b genere output válido y parsearlo — falla ~20%
 del tiempo. Un string libre es más robusto y suficiente para el caso de uso.
 
 ## Archivos modificados

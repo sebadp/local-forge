@@ -86,7 +86,7 @@ Usuario: "¿Qué capítulos tenemos listos?"
 - **`request_more_tools`**: mantener backward-compatible (categories sigue funcionando, query es nuevo)
 - **Backfill**: background task via `asyncio.create_task()` (no bloquea startup)
 - **Token budget**: project notes en contexto deben respetar el budget de 32K tokens
-- **qwen3:8b**: Tool RAG debe ser transparente al LLM — el modelo no necesita entender embeddings
+- **qwen3.5:9b**: Tool RAG debe ser transparente al LLM — el modelo no necesita entender embeddings
 - **Truncado**: eliminar truncados agresivos donde sea posible; cuando sea necesario usar 500+ chars, no 120
 
 ## Investigación de Referencia (Tool RAG)

@@ -180,7 +180,12 @@ Plan completo: `docs/exec-plans/11-eval_implementation_plan.md`
 | 5 | ✅ | Auto-evolución: memorias de auto-corrección + prompt versioning + `/approve-prompt` |
 | 6 | ✅ | LLM guardrails, span instrumentation de tools, cleanup job, dashboard queries |
 
-Docs: `docs/features/12-eval_guardrails_tracing.md`, `docs/features/14-eval_user_signals.md`, `docs/features/13-eval_dataset.md`, `docs/features/16-eval_skill.md`, `docs/features/15-eval_auto_evolution.md`, `docs/features/17-eval_maduracion.md`
+Docs: `docs/features/12-eval_guardrails_tracing.md`, `docs/features/14-eval_user_signals.md`, `docs/features/13-eval_dataset.md`, `docs/features/16-eval_skill.md`, `docs/features/15-eval_auto_evolution.md`, `docs/features/17-eval_maduracion.md`, `docs/features/49-regression_eval_suite.md`
+
+**Regression Eval Suite** (`scripts/`):
+- `scripts/seed_eval_dataset.py` — Seed 82 golden test cases (`make eval-seed`)
+- `scripts/run_eval.py` — 3 modos: `classify` (intent), `tools` (selection), `e2e` (LLM-as-judge)
+- `make eval` → seed + classify + e2e (CI-compatible, exit codes 0/1/2)
 
 ---
 

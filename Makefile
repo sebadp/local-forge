@@ -1,6 +1,7 @@
-.PHONY: dev test lint format typecheck check
+.PHONY: dev test lint format typecheck check eval eval-seed eval-seed-clear eval-classify eval-tools eval-e2e eval-e2e-verbose eval-langfuse
 
 VENV := .venv/bin/
+OLLAMA_URL ?= http://localhost:11434
 
 dev:
 	python3 -m venv .venv
@@ -21,3 +22,28 @@ typecheck:
 	$(VENV)mypy app
 
 check: lint typecheck test
+
+# --- Eval targets ---
+
+eval-seed:
+	$(VENV)python scripts/seed_eval_dataset.py --db data/localforge.db
+
+eval-seed-clear:
+	$(VENV)python scripts/seed_eval_dataset.py --db data/localforge.db --clear
+
+eval-classify:
+	$(VENV)python scripts/run_eval.py --mode classify --threshold 0.8 --limit 100 --ollama $(OLLAMA_URL)
+
+eval-tools:
+	$(VENV)python scripts/run_eval.py --mode tools --threshold 0.7 --limit 100 --ollama $(OLLAMA_URL)
+
+eval-e2e:
+	$(VENV)python scripts/run_eval.py --mode e2e --threshold 0.5 --limit 100 --ollama $(OLLAMA_URL)
+
+eval-e2e-verbose:
+	$(VENV)python scripts/run_eval.py --mode e2e --threshold 0.5 --limit 100 --ollama $(OLLAMA_URL) -v
+
+eval-langfuse:
+	$(VENV)python scripts/run_eval.py --mode e2e --threshold 0.5 --limit 100 --ollama $(OLLAMA_URL) --langfuse
+
+eval: eval-seed eval-classify eval-e2e

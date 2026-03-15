@@ -285,7 +285,7 @@ python scripts/dashboard.py --db data/localforge.db --days 30 --output reports/d
 
 ### 5.1 Latencias: qué es normal
 
-Para un sistema local (Ollama + qwen3:8b), los rangos típicos son:
+Para un sistema local (Ollama + qwen3.5:9b), los rangos típicos son:
 
 | Span | p50 normal | p50 preocupante | Causa común |
 |---|---|---|---|
@@ -439,7 +439,7 @@ Fail-open deja pasar una respuesta potencialmente mala en ese caso específico �
 mejor que silenciar a todos los usuarios.
 
 **¿Por qué LLM-as-judge con `think=False`?**
-qwen3:8b tiene un modo de "chain-of-thought" que a veces lleva al modelo a razonar hacia
+qwen3.5:9b tiene un modo de "chain-of-thought" que a veces lleva al modelo a razonar hacia
 una conclusión y luego contradecirla en el texto final. Para prompts binarios (yes/no),
 ese razonamiento adicional hace que el parseo sea poco confiable. `think=False` desactiva
 el CoT y da respuestas más directas.

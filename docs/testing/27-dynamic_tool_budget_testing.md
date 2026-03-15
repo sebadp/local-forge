@@ -1,7 +1,7 @@
 # Testing: Dynamic Tool Budget & `request_more_tools`
 
 > **Feature documentada**: [`docs/features/27-dynamic_tool_budget.md`](../features/27-dynamic_tool_budget.md)
-> **Requisitos previos**: Container corriendo (`docker compose up -d`), modelos de Ollama disponibles (qwen3:8b).
+> **Requisitos previos**: Container corriendo (`docker compose up -d`), modelos de Ollama disponibles (qwen3.5:9b).
 
 ---
 
@@ -200,7 +200,7 @@ Si `TOOL_CATEGORIES` no tiene una categoría que el LLM pide:
 | Problema | Causa probable | Solución |
 |---|---|---|
 | `Tool router: selected 8 tools: [solo tools de una categoría]` | Bug pre-fix (rara vez, si se revirtió el cambio) | Verificar que `select_tools()` usa `per_cat` y no el early-return viejo |
-| `request_more_tools` no aparece en los logs aunque el LLM dice que necesita tools | qwen3:8b no llamó el meta-tool (decidió responder en texto) | Normal — el LLM es libre de responder directo. El meta-tool es un mecanismo de escape, no obligatorio |
+| `request_more_tools` no aparece en los logs aunque el LLM dice que necesita tools | qwen3.5:9b no llamó el meta-tool (decidió responder en texto) | Normal — el LLM es libre de responder directo. El meta-tool es un mecanismo de escape, no obligatorio |
 | `request_more_tools: added=0` para una categoría existente | La categoría ya estaba en el tool set inicial | El comportamiento es correcto — dedup funcionando |
 | Error en `_run_tool_call` para `request_more_tools` | El meta-tool llegó al handler normal en lugar del inline handler | Verificar que `REQUEST_MORE_TOOLS_NAME` está correctamente comparado en `executor.py` |
 | Tests fallan con `ImportError: cannot import REQUEST_MORE_TOOLS_NAME` | La constante no fue exportada desde `router.py` | Verificar que `REQUEST_MORE_TOOLS_NAME` existe en `app/skills/router.py` al nivel de módulo |
@@ -212,4 +212,4 @@ Si `TOOL_CATEGORIES` no tiene una categoría que el LLM pide:
 | Variable (`.env`) | Valor de test | Efecto |
 |---|---|---|
 | No hay variable específica para esta feature | — | La distribución proporcional y el meta-tool son siempre activos |
-| `OLLAMA_MODEL` | `qwen3:8b` | El modelo afecta si el LLM decide llamar `request_more_tools` o no |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | El modelo afecta si el LLM decide llamar `request_more_tools` o no |

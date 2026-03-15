@@ -57,7 +57,7 @@ Lo que debió pasar:
 
 ### 2.2 Modelos más chicos hallucinan más
 
-Usamos **qwen3:8b** (8 mil millones de parámetros) que corre localmente. Es un modelo
+Usamos **qwen3.5:9b** (8 mil millones de parámetros) que corre localmente. Es un modelo
 capaz, pero tiene menos "paciencia" para cadenas largas de tool calls comparado con
 modelos más grandes (GPT-4, Claude, Qwen3-32B). A veces toma atajos y responde con
 lo que infiere del contexto parcial.
@@ -325,7 +325,7 @@ Veamos paso a paso lo que ocurrió para entender cómo interactúan todas las pi
 2. **Mirá cuántas iteraciones usó** — si el LLM respondió en iteración 1-2 sin hacer
    tool calls suficientes, el problema es respuesta prematura
 3. **Considerá si el modelo es adecuado** — para tareas que requieren cadenas largas de
-   tool calls (5+), qwen3:8b puede no ser suficiente. Modelos más grandes como
+   tool calls (5+), qwen3.5:9b puede no ser suficiente. Modelos más grandes como
    qwen3:32b o qwen3.5 tienen mucho mejor adherencia a tools
 
 ### Si ves schema hallucination (argumentos incorrectos)

@@ -38,7 +38,7 @@ Para un asistente personal que maneja conversaciones reales, la disponibilidad y
 ## Casos de Uso Críticos
 
 1. **Ollama crash**: readiness probe detecta que Ollama no responde → container marcado como unhealthy → Docker restart policy lo levanta → readiness espera a que Ollama responda antes de aceptar mensajes
-2. **Deploy de nueva versión**: `docker pull ghcr.io/user/wasap:v1.3.0` → `docker-compose up -d` → health check confirma que todo está OK → si falla, `docker-compose up -d` con tag anterior
+2. **Deploy de nueva versión**: `docker pull ghcr.io/user/localforge:v1.3.0` → `docker-compose up -d` → health check confirma que todo está OK → si falla, `docker-compose up -d` con tag anterior
 3. **Secrets rotation**: cambiar WhatsApp token → actualizar Docker secret → restart container → token viejo nunca estuvo en disco como texto plano
 4. **CI green → auto-deploy staging**: push a `main` → CI pasa → imagen taggeada → deploy automático a staging (si configurado)
 

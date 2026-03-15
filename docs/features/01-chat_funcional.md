@@ -64,7 +64,7 @@ El usuario envía un mensaje de texto por WhatsApp y recibe una respuesta genera
 4. **Rate limiter** verifica que el usuario no exceda el límite configurable
 5. **ConversationManager** busca o crea la conversación para ese número de teléfono y carga los últimos N mensajes
 6. **Se construye el contexto** con system prompt + historial + mensaje actual
-7. **OllamaClient.chat()** envía al modelo local (qwen3:8b por defecto) y recibe respuesta
+7. **OllamaClient.chat()** envía al modelo local (qwen3.5:9b por defecto) y recibe respuesta
 8. **Formato + split**: el markdown se convierte a formato WhatsApp y se divide si excede 4096 chars
 9. **WhatsAppClient.send_message()** envía la respuesta (con reintentos internos)
 
@@ -72,7 +72,7 @@ El usuario envía un mensaje de texto por WhatsApp y recibe una respuesta genera
 
 ## Cómo extenderla
 
-- **Cambiar modelo**: variable `OLLAMA_MODEL` en `.env` (default: `qwen3:8b`)
+- **Cambiar modelo**: variable `OLLAMA_MODEL` en `.env` (default: `qwen3.5:9b`)
 - **Cambiar max mensajes en historial**: `CONVERSATION_MAX_MESSAGES` en `.env` (default: `20`)
 - **Agregar otro canal**: Implementar un nuevo client similar a `WhatsAppClient`
 - **System prompt custom**: `SYSTEM_PROMPT` en `.env` o via auto-evolución (Fase 8)
@@ -90,7 +90,7 @@ El usuario envía un mensaje de texto por WhatsApp y recibe una respuesta genera
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
 | Ollama local | OpenAI API / Anthropic cloud | Costo cero, privacidad, sin dependencia de red externa |
-| qwen3:8b como modelo default | llama3.1, mistral | Mejor rendimiento calidad/latencia en 8B params |
+| qwen3.5:9b como modelo default | llama3.1, mistral | Mejor rendimiento calidad/latencia en 8B params |
 | Historial en memoria primero | SQLite desde el inicio | Iterar rápido en Fase 1, migrar a DB en Fase 2 |
 | FastAPI lifespan pattern | startup events | Permite cleanup limpio (graceful shutdown) |
 | HMAC signature validation | IP whitelisting | Estándar de WhatsApp Cloud API, más seguro |
@@ -110,7 +110,7 @@ El usuario envía un mensaje de texto por WhatsApp y recibe una respuesta genera
 
 | Variable (`config.py`) | Default | Efecto |
 |---|---|---|
-| `OLLAMA_MODEL` | `qwen3:8b` | Modelo principal para chat |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Modelo principal para chat |
 | `OLLAMA_BASE_URL` | `http://ollama:11434` | URL del servidor Ollama |
 | `CONVERSATION_MAX_MESSAGES` | `20` | Mensajes máximos en historial |
 | `WHATSAPP_ACCESS_TOKEN` | (requerido) | Token de la app de WhatsApp |

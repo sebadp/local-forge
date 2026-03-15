@@ -85,9 +85,9 @@ Agent session abc123 completed
 **Input:** `"Crea el archivo test.md con el texto 'hola mundo'"`
 
 **Expected behavior:**
-1. Wasap responde inmediatamente: `"🤖 Entendido, inicio sesión de trabajo..."`
+1. LocalForge responde inmediatamente: `"🤖 Entendido, inicio sesión de trabajo..."`
 2. El agente llama `write_source_file("test.md", "hola mundo")`
-3. Wasap envía: `"✅ Sesión agéntica completada\n..."`
+3. LocalForge envía: `"✅ Sesión agéntica completada\n..."`
 4. El archivo `test.md` existe en la raíz del proyecto
 
 **Verificar:**
@@ -117,7 +117,7 @@ Plan actual:
 
 1. Iniciar una sesión larga (e.g., investigar el codebase completo)
 2. Enviar `/cancel`
-3. Wasap debe responder: `"🛑 Sesión agéntica cancelada."`
+3. LocalForge debe responder: `"🛑 Sesión agéntica cancelada."`
 4. Confirmar: `/agent` responde `"No hay ninguna sesión agéntica activa."`
 
 ---
@@ -132,7 +132,7 @@ Plan actual:
 3. El agente pregunta: `"⏸️ ¿Te parece bien el cambio antes de hacer el commit? [S/N]"`
 4. El usuario responde `"sí"`
 5. El agente hace el commit
-6. Wasap reporta el resultado
+6. LocalForge reporta el resultado
 
 **Verificar:**
 ```bash

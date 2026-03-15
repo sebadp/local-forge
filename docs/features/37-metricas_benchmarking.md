@@ -70,7 +70,7 @@ aborda cada una.
 
 ### El problema
 
-qwen3:8b tiene una ventana de contexto de ~32K tokens. El sistema le envía: system prompt +
+qwen3.5:9b tiene una ventana de contexto de ~32K tokens. El sistema le envía: system prompt +
 memorias + daily logs + notas relevantes + resumen de conversacion + historial reciente +
 proyectos activos. Si todo esto supera el límite, el modelo trunca silenciosamente o degrada.
 
@@ -141,7 +141,7 @@ if len(reply) < 30:
 ```
 
 `langdetect` usa n-gramas de caracteres. Con textos cortos ("Sí", "Ok", "Claro"), la distribución
-estadística es insuficiente para detectar el idioma con confianza. En pruebas con qwen3:8b,
+estadística es insuficiente para detectar el idioma con confianza. En pruebas con qwen3.5:9b,
 respuestas cortas generaban falsos positivos de `language_match` en ~30% de los casos. El umbral
 de 30 chars elimina esos falsos positivos sin sacrificar la detección en respuestas reales.
 
@@ -252,7 +252,7 @@ python scripts/run_eval.py --entry-type correction --limit 20 --threshold 0.7
 El script offline no requiere FastAPI ni el servidor completo. Solo necesita la DB SQLite
 y acceso a Ollama. Esto permite correrlo en CI antes de un deploy.
 
-### Por qué el juez es el mismo modelo (qwen3:8b)
+### Por qué el juez es el mismo modelo (qwen3.5:9b)
 
 Idealmente el juez sería un modelo más capaz que el evaluado (ej. usar Claude para evaluar
 qwen3). Pero esto introduce dependencias externas, costos y latencia. Para un sistema local-first

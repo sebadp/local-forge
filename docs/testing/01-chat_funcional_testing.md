@@ -1,7 +1,7 @@
 # Testing Manual: Chat Funcional
 
 > **Feature documentada**: [`docs/features/01-chat_funcional.md`](../features/01-chat_funcional.md)
-> **Requisitos previos**: Container corriendo (`docker compose up -d`), Ollama con `qwen3:8b` descargado.
+> **Requisitos previos**: Container corriendo (`docker compose up -d`), Ollama con `qwen3.5:9b` descargado.
 
 ---
 
@@ -78,6 +78,6 @@ docker compose logs -f localforge 2>&1 | grep -i "error\|exception"
 
 | Variable (`.env`) | Valor de test | Efecto |
 |---|---|---|
-| `OLLAMA_MODEL` | `qwen3:8b` | Modelo a usar |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Modelo a usar |
 | `RATE_LIMIT_MAX` | `5` (para testear) | Baja el límite para probar rate limiting |
 | `LOG_LEVEL` | `DEBUG` | Muestra más detalle en logs |

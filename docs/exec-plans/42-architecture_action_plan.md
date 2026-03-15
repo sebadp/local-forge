@@ -5,7 +5,7 @@
 
 ## Origen
 
-Se compararon las 12 capacidades del AIP Architecture Center contra WasAP. Las áreas fuertes (observability, context engineering, security, agent orchestration, eval) ya están al nivel. Este plan cubre las **mejoras inmediatas** y los **gaps estratégicos** pendientes.
+Se compararon las 12 capacidades del AIP Architecture Center contra LocalForge. Las áreas fuertes (observability, context engineering, security, agent orchestration, eval) ya están al nivel. Este plan cubre las **mejoras inmediatas** y los **gaps estratégicos** pendientes.
 
 ---
 
@@ -61,7 +61,7 @@ Se compararon las 12 capacidades del AIP Architecture Center contra WasAP. Las �
 - `app/agent/planner.py`: Cambiar `think=False` → `think=True` en `create_plan()`, `replan()`, `synthesize()`
 - **Nota**: qwen3 con `think=True` genera `<think>...</think>` tags que hay que parsear/strip del output JSON. Verificar que `_parse_plan_json()` los maneje.
 
-**Consideración de latencia:** `think=True` en qwen3:8b puede duplicar los tokens de output. En contexto agéntico esto es aceptable (el usuario ya espera latencia). En flujo normal (chat) NO activar think para el planner — solo aplica al agent loop.
+**Consideración de latencia:** `think=True` en qwen3.5:9b puede duplicar los tokens de output. En contexto agéntico esto es aceptable (el usuario ya espera latencia). En flujo normal (chat) NO activar think para el planner — solo aplica al agent loop.
 
 **Acción:** Modificar las 3 funciones del planner. Verificar que el parser JSON tolere `<think>` prefix en la respuesta.
 

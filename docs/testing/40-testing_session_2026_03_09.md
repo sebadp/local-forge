@@ -235,7 +235,7 @@ Multiples instancias donde el LLM "sabe" la respuesta y no llama tools:
 
 ### Bug 11: not_empty se activa 4+ veces por sesion
 
-El LLM (qwen3:8b) retorna string vacio despues de tool calls exitosos. El guardrail detecta y remedia, pero agrega ~2-3s por ocurrencia.
+El LLM (qwen3.5:9b) retorna string vacio despues de tool calls exitosos. El guardrail detecta y remedia, pero agrega ~2-3s por ocurrencia.
 
 **Causa**: Comportamiento conocido de qwen3 — tras tool results, a veces emite solo el resultado sin texto natural.
 

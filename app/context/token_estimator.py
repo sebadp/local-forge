@@ -1,4 +1,4 @@
-"""Token budget estimation for qwen3:8b context window.
+"""Token budget estimation for qwen3.5:9b context window.
 
 Uses chars/4 as a default proxy, auto-calibrated at runtime using
 actual token counts from Ollama's prompt_eval_count response field.
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CONTEXT_LIMIT = 32_000  # qwen3:8b context window
+_CONTEXT_LIMIT = 32_000  # qwen3.5:9b context window
 
 # --- Runtime calibration state ---
 _token_ratios: dict[str, float] = {}  # model_name → chars_per_token ratio

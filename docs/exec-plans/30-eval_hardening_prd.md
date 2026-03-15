@@ -11,7 +11,7 @@ en producción. El objetivo es cerrar esos gaps para que el eval sea observable 
 | # | Gap | Evidencia en código |
 |---|-----|---------------------|
 | 1 | `language_match` remediation débil | `_handle_guardrail_failure()` en router.py:554–570 — hint en inglés → qwen3 puede ignorarlo |
-| 2 | LLM judges inutilizables | `pipeline.py:103` — `timeout: float = 0.5` hardcodeado; qwen3:8b tarda 2–5s → siempre timeout |
+| 2 | LLM judges inutilizables | `pipeline.py:103` — `timeout: float = 0.5` hardcodeado; qwen3.5:9b tarda 2–5s → siempre timeout |
 | 3 | `run_quick_eval` mide word overlap | `eval_tools.py:221–244` — set intersection entre palabras, no semánticamente correcto |
 | 4 | Tags nunca se populan | `dataset.py:39–71` — `add_dataset_entry()` llamado sin `tags=` → `eval_dataset_tags` vacía |
 | 5 | Sin benchmark offline | No existe `scripts/run_eval.py` |

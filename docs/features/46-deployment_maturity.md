@@ -80,7 +80,7 @@ Agrega health checks (liveness + readiness), Docker healthcheck, compose profile
 - **Agregar más checks a `/ready`**: agregar un bloque `try/except` en `ready()` para el nuevo servicio (e.g. Redis, MCP)
 - **Cambiar health check interval**: modificar `HEALTHCHECK --interval=` en Dockerfile o `healthcheck.interval` en docker-compose.yml
 - **Agregar servicio nuevo al compose**: asignar el profile correcto (`dev`, `prod`, o ambos)
-- **Rollback de versión**: `docker pull ghcr.io/sebadp/wasap:v1.2.2` → `docker compose --profile prod up -d`
+- **Rollback de versión**: `docker pull ghcr.io/sebadp/localforge:v1.2.2` → `docker compose --profile prod up -d`
 
 ---
 

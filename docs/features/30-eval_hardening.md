@@ -4,7 +4,7 @@
 
 El stack de eval de LocalForge existía pero tenía 5 gaps que lo hacían ineficaz:
 1. `language_match` remediation débil — hint en inglés que qwen3 podía ignorar
-2. LLM judges inutilizables — timeout de 0.5s (siempre timeout con qwen3:8b local)
+2. LLM judges inutilizables — timeout de 0.5s (siempre timeout con qwen3.5:9b local)
 3. `run_quick_eval` medía word overlap (métrica semánticamente inválida)
 4. Dataset tags nunca se populaban — sin filtrado por causa de fallo
 5. Sin benchmark offline — no se podía evaluar en CI
@@ -19,7 +19,7 @@ Se agrega un 6º fix transversal: visibilidad en Langfuse de la llamada LLM de r
 
 **Archivo:** `app/webhook/router.py` — `_handle_guardrail_failure()`
 
-El hint de remediation ahora es bilingüe (target language + English fallback) para que qwen3:8b
+El hint de remediation ahora es bilingüe (target language + English fallback) para que qwen3.5:9b
 lo entienda independientemente del idioma en que esté "pensando":
 
 ```
@@ -51,7 +51,7 @@ guardrails_llm_timeout: float = 3.0  # antes hardcodeado a 0.5s
 
 `run_guardrails()` lee `settings.guardrails_llm_timeout` y lo pasa a `_run_async_check()`.
 Los checks `tool_coherence` y `hallucination_check` (opt-in vía `guardrails_llm_checks=True`)
-ahora realmente corren con qwen3:8b local.
+ahora realmente corren con qwen3.5:9b local.
 
 ### 4. `OllamaClient.chat()` acepta `think: bool | None`
 
@@ -101,7 +101,7 @@ WHERE t.tag = 'guardrail:language_match';
 
 ```bash
 python scripts/run_eval.py [--db data/localforge.db] [--ollama http://localhost:11434]
-                           [--model qwen3:8b] [--entry-type all] [--limit 20]
+                           [--model qwen3.5:9b] [--entry-type all] [--limit 20]
                            [--threshold 0.7]
 ```
 

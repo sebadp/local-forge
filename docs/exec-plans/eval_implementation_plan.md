@@ -710,7 +710,7 @@ from deepeval.models import DeepEvalBaseLLM
 
 class OllamaEvaluator(DeepEvalBaseLLM):
     """Adapter para usar Ollama como evaluador en DeepEval."""
-    def __init__(self, base_url="http://localhost:11434", model="qwen3:8b"):
+    def __init__(self, base_url="http://localhost:11434", model="qwen3.5:9b"):
         self.base_url = base_url
         self.model = model
     # ... implementar generate(), a_generate(), get_model_name()

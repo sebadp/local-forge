@@ -49,20 +49,20 @@ no tiene mecanismo de escape: está atado al tool set inicial sin forma de pedir
 
 Aumentar el cap (de 8 a 16) resolvería el bug inmediato pero no el problema raíz: si el clasificador
 elige categorías incorrectas, más tools no ayudan. Además, más tools en contexto = mayor probabilidad
-de que qwen3:8b elija la tool equivocada (accuracy degrada después de ~30 tools según Anthropic).
+de que qwen3.5:9b elija la tool equivocada (accuracy degrada después de ~30 tools según Anthropic).
 
 ### ¿Por qué no Tool-RAG embedding-based ahora?
 
 LocalForge tiene la infraestructura (nomic-embed-text + sqlite-vec), pero con ~50 tools actuales el
 beneficio marginal no justifica la complejidad. `request_more_tools` es más simple, funciona con
-qwen3:8b, y no requiere indexación. Tool-RAG queda documentado para cuando tools > 50.
+qwen3.5:9b, y no requiere indexación. Tool-RAG queda documentado para cuando tools > 50.
 
 ### Referencia de industria
 
 Este patrón es el que Anthropic implementó como `tool_search_tool` en la API (Sonnet 4.0+, Feb 2026)
 y el que describe el paper ITR (arxiv:2602.17046): 95% reducción de contexto, 32% mejora de accuracy.
 LocalForge implementa una versión simplificada (por categorías, no embedding search) adecuada para
-qwen3:8b local.
+qwen3.5:9b local.
 
 ## 5. Restricciones
 

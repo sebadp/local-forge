@@ -103,7 +103,7 @@ per_cat = max(2, max_tools // len(categories))
 }
 ```
 
-La lista de categorías se incluye en la descripción para que qwen3:8b sepa exactamente cuáles puede pedir.
+La lista de categorías se incluye en la descripción para que qwen3.5:9b sepa exactamente cuáles puede pedir.
 
 ### Prepend del meta-tool en `execute_tool_loop()` (`app/skills/executor.py:285`)
 
@@ -150,11 +150,11 @@ Dentro del loop de iteraciones, antes de ejecutar tool calls regulares:
 
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
-| Distribución proporcional (`max_tools // N`) | Aumentar cap de 8 a 16 | El cap mayor no resuelve el bug cuando el clasificador elige categorías incorrectas; más tools degradan accuracy en qwen3:8b |
+| Distribución proporcional (`max_tools // N`) | Aumentar cap de 8 a 16 | El cap mayor no resuelve el bug cuando el clasificador elige categorías incorrectas; más tools degradan accuracy en qwen3.5:9b |
 | `per_cat = max(2, ...)` con mínimo de 2 | Sin mínimo | Garantiza que incluso con 8+ categorías, cada una tenga al menos 2 representantes |
 | Meta-tool manejado inline (no en SkillRegistry) | Registrar como tool normal | El handler modifica el estado del loop (`tools` list) — no puede ser una tool normal que retorna solo un string |
 | Meta-tool NO pasa por PolicyEngine | Evaluación de seguridad estándar | Es meta-infraestructura; solo redirige qué tools están disponibles, no ejecuta comandos externos |
-| Categorías listadas en la descripción del schema | Prompt separado al LLM | qwen3:8b toma mejores decisiones cuando ve las opciones directamente en el schema de la tool |
+| Categorías listadas en la descripción del schema | Prompt separado al LLM | qwen3.5:9b toma mejores decisiones cuando ve las opciones directamente en el schema de la tool |
 | Tool-RAG embedding-based descartado (por ahora) | Búsqueda semántica de tools por embedding | Con ~50 tools actuales el beneficio no justifica la complejidad; documentado en PRD para cuando tools > 50 |
 
 ---
@@ -165,7 +165,7 @@ Dentro del loop de iteraciones, antes de ejecutar tool calls regulares:
 - **Categoría con menos tools que `per_cat`**: toma todo lo que tiene. El budget sobrante NO se redistribuye a otras categorías en este ciclo (simplicidad > optimización).
 - **LLM llama `request_more_tools` con categoría inexistente**: `select_tools(["nonexistent"], ...)` retorna `[]` → `added = []` → confirmación "No new tools added". No crash.
 - **LLM llama `request_more_tools` con una categoría ya cargada**: la dedup por nombre evita duplicados. Confirmación "No new tools added". No crash.
-- **`request_more_tools` consume una iteración**: el loop sigue siendo de MAX_TOOL_ITERATIONS=5. Un abuso del meta-tool podría reducir iteraciones disponibles para las tools reales. En práctica, qwen3:8b lo usa como máximo una vez por conversación.
+- **`request_more_tools` consume una iteración**: el loop sigue siendo de MAX_TOOL_ITERATIONS=5. Un abuso del meta-tool podría reducir iteraciones disponibles para las tools reales. En práctica, qwen3.5:9b lo usa como máximo una vez por conversación.
 - **Orden del resultado preservado**: si el LLM llama `request_more_tools` y una tool regular en el mismo turno, los resultados se appendean en el orden original de `response.tool_calls` via `tool_result_map[i]`.
 - **`build_request_more_tools_schema` ordena las categorías**: `sorted(available_categories)` para output determinístico — útil para tests y reproducibilidad.
 

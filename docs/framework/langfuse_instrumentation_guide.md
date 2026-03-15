@@ -98,7 +98,7 @@ langfuse.create_prompt(
     prompt="You are a helpful assistant...",
     type="text",
     config={
-        "model": "qwen3:8b",
+        "model": "qwen3.5:9b",
         "temperature": 0.7,
         "response_format": {"type": "json_schema", "strict": True, "schema": {...}},
     },
@@ -417,7 +417,7 @@ trace = get_current_trace()
 if trace:
     async with trace.span("memory:flush", kind="generation") as span:
         span.set_input({"message_count": len(messages)})
-        span.set_model("qwen3:8b")  # convenience method
+        span.set_model("qwen3.5:9b")  # convenience method
         result = await ollama_client.chat(messages, think=False)
         span.set_output({"facts_added": len(facts)})
 ```
@@ -438,7 +438,7 @@ Cuando un span tiene `kind="generation"` pero no se setea `gen_ai.request.model`
 model = md.pop("gen_ai.request.model", None)
 kind = md.pop("_span_kind", None)
 if model is None and kind == "generation":
-    model = Settings().ollama_model  # "qwen3:8b" default
+    model = Settings().ollama_model  # "qwen3.5:9b" default
 ```
 
 Esto garantiza que **todas** las generations muestren modelo en Langfuse, incluso las que no setean metadata explícitamente.
@@ -447,7 +447,7 @@ Esto garantiza que **todas** las generations muestren modelo en Langfuse, inclus
 
 ```python
 async with trace.span("llm:summarize", kind="generation") as span:
-    span.set_model("qwen3:8b")  # → metadata["gen_ai.request.model"]
+    span.set_model("qwen3.5:9b")  # → metadata["gen_ai.request.model"]
     # ...
 ```
 

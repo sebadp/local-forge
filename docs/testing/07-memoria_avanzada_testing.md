@@ -56,4 +56,4 @@ ls -la data/memory/snapshots/
 |---|---|---|
 | MEMORY.md no se actualiza | Watcher no iniciado | Verificar `MEMORY_FILE_WATCH_ENABLED=true` y que `watchdog` esté instalado |
 | Loop de sync DB↔archivo | Guard anti-loop roto | Reiniciar container, verificar logs de watcher |
-| Facts no se extraen en flush | Modelo LLM muy limitado | Verificar que el modelo en uso es `qwen3:8b` |
+| Facts no se extraen en flush | Modelo LLM muy limitado | Verificar que el modelo en uso es `qwen3.5:9b` |

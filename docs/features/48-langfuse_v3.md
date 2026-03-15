@@ -218,7 +218,7 @@ async def get_active_prompt(name: str, ...) -> str:
 Ejemplo de evaluator para detectar hallucinations:
 ```
 Name: hallucination_check
-Model: qwen3:8b (via Ollama endpoint)
+Model: qwen3.5:9b (via Ollama endpoint)
 Template: "Does the output contain information not grounded in the input? Reply 'yes' or 'no'."
 Score: hallucination (0.0 = no hallucination, 1.0 = hallucination)
 Apply to: traces with tag "tools"
@@ -411,9 +411,9 @@ Langfuse calcula costos automáticamente si el modelo está registrado.
 
 **Registrar modelos custom** (`Langfuse → Settings → Models → Add Custom Model`):
 
-| Campo | qwen3:8b | llava:7b | nomic-embed-text |
+| Campo | qwen3.5:9b | llava:7b | nomic-embed-text |
 |---|---|---|---|
-| Model Name | `qwen3:8b` | `llava:7b` | `nomic-embed-text` |
+| Model Name | `qwen3.5:9b` | `llava:7b` | `nomic-embed-text` |
 | Match Pattern | `qwen3*` | `llava*` | `nomic*` |
 | Input Price | $0.00 | $0.00 | $0.00 |
 | Output Price | $0.00 | $0.00 | $0.00 |
@@ -421,7 +421,7 @@ Langfuse calcula costos automáticamente si el modelo está registrado.
 
 > **Nota**: Con precios $0 (Ollama self-hosted), el valor está en tracking de **token efficiency** por feature. Si se migra a una API paga, solo cambiar los precios aquí.
 
-**Verificación**: Ir a cualquier generation en Langfuse → debe mostrar el modelo (`qwen3:8b`) con usage details (input/output tokens). El modelo fallback se aplica automáticamente si no se envía en metadata.
+**Verificación**: Ir a cualquier generation en Langfuse → debe mostrar el modelo (`qwen3.5:9b`) con usage details (input/output tokens). El modelo fallback se aplica automáticamente si no se envía en metadata.
 
 ### Configuración de Webhooks para CI/CD
 
