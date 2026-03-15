@@ -109,33 +109,34 @@ async def backfill_embeddings(
             _span = None
             logger.debug("Failed to start backfill span", exc_info=True)
 
-    for i in range(0, len(unembedded), BATCH_SIZE):
-        batch = unembedded[i : i + BATCH_SIZE]
-        valid = [(mem_id, content[:_MAX_EMBED_CHARS]) for mem_id, content in batch if content]
-        if not valid:
-            continue
-        ids, texts = zip(*valid, strict=False)
-        try:
-            embeddings = await ollama_client.embed(list(texts), model=model)
-            for mem_id, emb in zip(ids, embeddings, strict=False):
-                await repository.save_embedding(mem_id, emb, auto_commit=False)
-                count += 1
-            # Single commit per batch instead of per-row
-            await repository.commit()
-        except Exception:
-            logger.warning(
-                "Failed to backfill memory batch %d-%d", i, i + len(batch), exc_info=True
-            )
+    try:
+        for i in range(0, len(unembedded), BATCH_SIZE):
+            batch = unembedded[i : i + BATCH_SIZE]
+            valid = [(mem_id, content[:_MAX_EMBED_CHARS]) for mem_id, content in batch if content]
+            if not valid:
+                continue
+            ids, texts = zip(*valid, strict=False)
+            try:
+                embeddings = await ollama_client.embed(list(texts), model=model)
+                for mem_id, emb in zip(ids, embeddings, strict=False):
+                    await repository.save_embedding(mem_id, emb, auto_commit=False)
+                    count += 1
+                # Single commit per batch instead of per-row
+                await repository.commit()
+            except Exception:
+                logger.warning(
+                    "Failed to backfill memory batch %d-%d", i, i + len(batch), exc_info=True
+                )
 
-    if count:
-        logger.info("Backfilled %d memory embeddings", count)
-
-    if _span_mgr is not None and _span is not None:
-        try:
-            _span.set_output({"embedded_count": count})
-            await _span_mgr.__aexit__(None, None, None)
-        except Exception:
-            logger.debug("Failed to finish backfill span", exc_info=True)
+        if count:
+            logger.info("Backfilled %d memory embeddings", count)
+    finally:
+        if _span_mgr is not None and _span is not None:
+            try:
+                _span.set_output({"embedded_count": count})
+                await _span_mgr.__aexit__(None, None, None)
+            except Exception:
+                logger.debug("Failed to finish backfill span", exc_info=True)
 
     return count
 

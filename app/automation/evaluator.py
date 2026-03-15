@@ -46,57 +46,58 @@ async def evaluate_rules(
             _span = None
             logger.debug("Failed to start automation span", exc_info=True)
 
-    for row in rows:
-        try:
-            rule = AutomationRule.from_row(tuple(row))
-        except Exception:
-            logger.exception("Failed to parse automation rule row")
-            continue
+    try:
+        for row in rows:
+            try:
+                rule = AutomationRule.from_row(tuple(row))
+            except Exception:
+                logger.exception("Failed to parse automation rule row")
+                continue
 
-        if in_cooldown(rule):
-            logger.debug("Rule %s in cooldown, skipping", rule.name)
-            continue
+            if in_cooldown(rule):
+                logger.debug("Rule %s in cooldown, skipping", rule.name)
+                continue
 
-        try:
-            met, value = await check_condition(rule, repository)
-        except Exception:
-            logger.exception("Condition check failed for rule %s", rule.name)
-            await _safe_log(repository, rule.id, "error", "failed", "condition_check_error")
-            continue
+            try:
+                met, value = await check_condition(rule, repository)
+            except Exception:
+                logger.exception("Condition check failed for rule %s", rule.name)
+                await _safe_log(repository, rule.id, "error", "failed", "condition_check_error")
+                continue
 
-        if not met:
-            continue
+            if not met:
+                continue
 
-        context = ActionContext(
-            platform_client=platform_client,
-            admin_phone=admin_phone,
-            user_phone=user_phone,
-            repository=repository,
-            ollama_client=ollama_client,
-            embed_model=embed_model,
-            vec_available=vec_available,
-        )
+            context = ActionContext(
+                platform_client=platform_client,
+                admin_phone=admin_phone,
+                user_phone=user_phone,
+                repository=repository,
+                ollama_client=ollama_client,
+                embed_model=embed_model,
+                vec_available=vec_available,
+            )
 
-        result = await execute_action(rule, value, context)
-        action_result = "success" if "error" not in result.lower() else "failed"
+            result = await execute_action(rule, value, context)
+            action_result = "success" if "error" not in result.lower() else "failed"
 
-        await _safe_log(repository, rule.id, value, action_result, result)
-        if action_result == "success":
-            await _safe_update_triggered(repository, rule.id)
-            triggered += 1
-        logger.info(
-            "Automation rule triggered: %s (condition: %s, result: %s)",
-            rule.name,
-            value,
-            result,
-        )
-
-    if _span_mgr is not None and _span is not None:
-        try:
-            _span.set_output({"triggered": triggered})
-            await _span_mgr.__aexit__(None, None, None)
-        except Exception:
-            logger.debug("Failed to finish automation span", exc_info=True)
+            await _safe_log(repository, rule.id, value, action_result, result)
+            if action_result == "success":
+                await _safe_update_triggered(repository, rule.id)
+                triggered += 1
+            logger.info(
+                "Automation rule triggered: %s (condition: %s, result: %s)",
+                rule.name,
+                value,
+                result,
+            )
+    finally:
+        if _span_mgr is not None and _span is not None:
+            try:
+                _span.set_output({"triggered": triggered})
+                await _span_mgr.__aexit__(None, None, None)
+            except Exception:
+                logger.debug("Failed to finish automation span", exc_info=True)
 
     return triggered
 

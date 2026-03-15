@@ -142,9 +142,12 @@ async def compact_tool_output(
     then falls back to LLM summarization, then to hard truncation.
     """
     if max_length is None:
-        from app.config import Settings
+        try:
+            from app.config import Settings
 
-        max_length = Settings().compaction_threshold  # type: ignore[call-arg]
+            max_length = Settings().compaction_threshold  # type: ignore[call-arg]
+        except Exception:
+            max_length = 20000
 
     if len(text) <= max_length:
         return text
