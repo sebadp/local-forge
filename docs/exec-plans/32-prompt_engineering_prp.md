@@ -173,7 +173,7 @@ El eval es advisory: muestra el score pero el humano decide. Razones:
 
 ### ¿Por qué `think=False` en TODOS los prompts JSON/binarios?
 
-qwen3:8b con `think=True` genera tokens `<think>...</think>` antes del output. Para prompts que
+qwen3.5:9b con `think=True` genera tokens `<think>...</think>` antes del output. Para prompts que
 esperan JSON (`flush_to_memory`, `consolidator`) o respuestas binarias (`yes`/`no`), esto:
 1. Agrega 500-2000ms de latencia innecesaria
 2. Puede contaminar el JSON con texto antes del `{`
@@ -181,7 +181,7 @@ esperan JSON (`flush_to_memory`, `consolidator`) o respuestas binarias (`yes`/`n
 
 ### ¿Por qué few-shot en el classifier y no fine-tuning?
 
-1. qwen3:8b via Ollama no soporta LoRA hot-swap fácilmente
+1. qwen3.5:9b via Ollama no soporta LoRA hot-swap fácilmente
 2. Few-shot es iterativo: se puede versionar el prompt con nuevos examples
 3. 5 examples agregan ~100 tokens — negligible en un context de 32K
 4. El pattern "examples in system prompt" es la recomendación de Qwen docs para clasificación

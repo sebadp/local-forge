@@ -49,7 +49,7 @@ def mock_ollama():
             content='{"context_summary":"test","tasks":[{"id":1,"description":"do it","worker_type":"general","depends_on":[]}]}',
             input_tokens=10,
             output_tokens=20,
-            model="qwen3:8b",
+            model="qwen3.5:9b",
         )
     )
     client.chat = AsyncMock(return_value="done")

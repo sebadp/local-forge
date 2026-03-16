@@ -61,6 +61,7 @@ class TraceRecorder:
         input_text: str,
         message_type: str = "text",
         platform: str = "whatsapp",
+        metadata: dict | None = None,
     ) -> None:
         try:
             await self._repo.save_trace(trace_id, phone_number, input_text, message_type)
@@ -73,11 +74,14 @@ class TraceRecorder:
                     name="interaction",
                     input=input_text,
                 )
-                # Set trace metadata (user, session, platform, etc.)
+                # Build trace metadata: base fields + any extra caller metadata
+                trace_metadata = {"message_type": message_type, "platform": platform}
+                if metadata:
+                    trace_metadata.update(metadata)
                 root_span.update_trace(
                     user_id=phone_number,
                     session_id=phone_number,
-                    metadata={"message_type": message_type, "platform": platform},
+                    metadata=trace_metadata,
                 )
                 self._root_spans[trace_id] = root_span
         except Exception:
@@ -162,6 +166,14 @@ class TraceRecorder:
                 if out_tokens is not None:
                     usage_details["output"] = out_tokens
                 model = md.pop("gen_ai.request.model", None)
+                # Fallback: if no model in metadata, check if this is a generation span
+                # (StatefulGenerationClient from start_generation()) and use default model
+                kind = md.pop("_span_kind", None)
+                if model is None and kind == "generation":
+                    try:
+                        model = Settings().ollama_model  # type: ignore[call-arg]
+                    except Exception:
+                        pass
 
                 span.update(
                     input=input_data,
@@ -228,14 +240,72 @@ class TraceRecorder:
         if not self.langfuse:
             return
         try:
+            # Ensure dataset exists (idempotent — Langfuse ignores duplicates)
+            self.langfuse.create_dataset(name=dataset_name)
+            # Extract source_trace_id for linking item → trace
+            _meta = dict(metadata) if metadata else {}
+            source_trace_id = _meta.pop("source_trace_id", None)
             self.langfuse.create_dataset_item(
                 dataset_name=dataset_name,
                 input={"text": input_text},
                 expected_output={"text": expected_output} if expected_output else None,
-                metadata=metadata or {},
+                metadata=_meta,
+                source_trace_id=source_trace_id,
             )
         except Exception:
             logger.warning("TraceRecorder.sync_dataset_to_langfuse failed", exc_info=True)
+
+    def get_or_create_dataset(self, name: str) -> None:
+        """Ensure a Langfuse dataset exists. Best-effort, no-op if no Langfuse."""
+        if not self.langfuse:
+            return
+        try:
+            self.langfuse.create_dataset(name=name)
+        except Exception:
+            logger.warning(
+                "TraceRecorder.get_or_create_dataset failed for '%s'", name, exc_info=True
+            )
+
+    def run_experiment_item(
+        self, dataset_name: str, item_id: str, trace_id: str, run_name: str = "eval"
+    ) -> None:
+        """Link a trace to a dataset item for experiment tracking. Best-effort."""
+        if not self.langfuse:
+            return
+        try:
+            # Update the dataset item to link it to the trace via source_trace_id
+            self.langfuse.create_dataset_item(
+                dataset_name=dataset_name,
+                id=item_id,
+                source_trace_id=trace_id,
+            )
+        except Exception:
+            logger.warning(
+                "TraceRecorder.run_experiment_item failed for item '%s'", item_id, exc_info=True
+            )
+
+    async def upsert_prompt(
+        self,
+        name: str,
+        content: str,
+        version: int | None = None,
+        labels: list[str] | None = None,
+    ) -> None:
+        """Sync a prompt to Langfuse Prompt Management. Best-effort, no-op if no Langfuse."""
+        if not self.langfuse:
+            return
+        try:
+            _labels = list(labels) if labels else []
+            if version is not None:
+                _labels.append(f"v{version}")
+            self.langfuse.create_prompt(
+                name=name,
+                prompt=content,
+                labels=_labels if _labels else [],
+                type="text",
+            )
+        except Exception:
+            logger.warning("TraceRecorder.upsert_prompt failed for '%s'", name, exc_info=True)
 
     async def set_trace_output(self, trace_id: str, output_text: str) -> None:
         # Output is set when finishing the trace; this is a no-op that can be

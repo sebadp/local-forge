@@ -160,7 +160,7 @@ PROMPT_VERSIONING_ENABLED=false
 | Catálogo centralizado en `prompt_registry.py` | Defaults inline en cada módulo | Evita circular imports; permite seed en loop; un solo lugar para listar todo |
 | `activate_with_eval` es advisory (no blocking) | Bloquear activación si score < threshold | El dataset puede no cubrir el caso de uso del nuevo prompt; el humano decide |
 | Cache en memoria con `invalidate_prompt_cache()` | Sin cache (siempre DB) | La resolución del prompt ocurre en cada mensaje; la DB no debe ser el hot path |
-| `think=False` explícito en TODO prompt binario/JSON | Depender del default del modelo | qwen3:8b genera 500-2000ms de CoT extra por defecto; JSON puede contaminarse |
+| `think=False` explícito en TODO prompt binario/JSON | Depender del default del modelo | qwen3.5:9b genera 500-2000ms de CoT extra por defecto; JSON puede contaminarse |
 | `repository: object | None = None` en planner y router | Param requerido | Backward compat — callers sin acceso a repo siguen funcionando |
 | Eval usa LLM-as-judge binario (yes/no) | Word overlap / BLEU | Más robusto a variaciones de redacción; mismo patrón que `run_quick_eval` |
 

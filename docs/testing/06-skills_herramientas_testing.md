@@ -48,7 +48,7 @@ docker compose logs -f localforge 2>&1 | grep -i "mcp\|server"
 
 | Problema | Causa probable | Solución |
 |---|---|---|
-| LLM no llama tools | Modelo no soporta tool calling o tools no registrados | Verificar `ollama show qwen3:8b` y logs de startup |
+| LLM no llama tools | Modelo no soporta tool calling o tools no registrados | Verificar `ollama show qwen3.5:9b` y logs de startup |
 | Calculator da error | Expresión no está en la whitelist AST | Verificar `calculator_tools.py` |
 | "No tools available" | Skills dir incorrecto o SKILL.md mal formateado | Verificar `SKILLS_DIR` y format del frontmatter |
 | MCP tool no aparece | Server no se conectó correctamente | Verificar `mcp_servers.json` y logs de MCP |

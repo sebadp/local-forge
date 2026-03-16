@@ -48,12 +48,9 @@ RUN groupadd -g $GID appuser && useradd -u $UID -g $GID -m appuser \
     && chown -R appuser:appuser /app /home/appuser
 USER appuser
 
-# Pre-download Whisper model so startup doesn't hit network + avoids permission warnings
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-base')"
-
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-LABEL org.opencontainers.image.source="https://github.com/sebadp/wasap"
+LABEL org.opencontainers.image.source="https://github.com/sebadp/localforge"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

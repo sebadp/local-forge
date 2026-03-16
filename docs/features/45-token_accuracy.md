@@ -78,7 +78,7 @@ Mejora la precisión de la estimación de tokens del proxy `chars/4` calibrándo
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
 | EMA con α=0.3 | Media aritmética simple | EMA se adapta a drift del tokenizer y pesa más los datos recientes |
-| Per-model ratios | Ratio global único | qwen3:8b y llava:7b tienen tokenizers diferentes (BPE vs otro) |
+| Per-model ratios | Ratio global único | qwen3.5:9b y llava:7b tienen tokenizers diferentes (BPE vs otro) |
 | Calibración post-response | Tokenizer externo (HuggingFace) | Zero dependencies, zero latency — el dato ya viene gratis de Ollama |
 | No persistir ratios | SQLite/archivo | Converge en ~5-10 requests, no justifica la complejidad |
 | `model` param con default `"default"` | Romper firma existente | Backward compatible — call sites sin model siguen funcionando |
@@ -99,6 +99,6 @@ Mejora la precisión de la estimación de tokens del proxy `chars/4` calibrándo
 
 | Variable (`config.py`) | Default | Efecto |
 |---|---|---|
-| `ollama_model` | `qwen3:8b` | Modelo usado como key en `_token_ratios` para budget tracking |
+| `ollama_model` | `qwen3.5:9b` | Modelo usado como key en `_token_ratios` para budget tracking |
 
 No hay variables nuevas — la feature es automática y sin configuración.

@@ -87,7 +87,7 @@ async def test_chat_response_includes_token_counts():
     client = OllamaClient(
         http_client=mock_http,
         base_url="http://localhost:11434",
-        model="qwen3:8b",
+        model="qwen3.5:9b",
     )
 
     mock_resp = MagicMock()
@@ -105,7 +105,7 @@ async def test_chat_response_includes_token_counts():
     assert response.input_tokens == 42
     assert response.output_tokens == 17
     assert response.total_duration_ms == pytest.approx(3000.0)
-    assert response.model == "qwen3:8b"
+    assert response.model == "qwen3.5:9b"
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_chat_response_handles_missing_token_fields():
     client = OllamaClient(
         http_client=mock_http,
         base_url="http://localhost:11434",
-        model="qwen3:8b",
+        model="qwen3.5:9b",
     )
 
     mock_resp = MagicMock()
@@ -131,7 +131,7 @@ async def test_chat_response_handles_missing_token_fields():
     assert response.input_tokens is None
     assert response.output_tokens is None
     assert response.total_duration_ms is None
-    assert response.model == "qwen3:8b"
+    assert response.model == "qwen3.5:9b"
 
 
 # ---------------------------------------------------------------------------
@@ -163,12 +163,12 @@ async def test_execute_tool_loop_creates_generation_span():
 
     mock_http = AsyncMock()
     ollama = OllamaClient(
-        http_client=mock_http, base_url="http://localhost:11434", model="qwen3:8b"
+        http_client=mock_http, base_url="http://localhost:11434", model="qwen3.5:9b"
     )
     # LLM responds with text directly (no tool calls) on first call
     ollama.chat_with_tools = AsyncMock(
         return_value=ChatResponse(
-            content="Done", input_tokens=10, output_tokens=5, model="qwen3:8b"
+            content="Done", input_tokens=10, output_tokens=5, model="qwen3.5:9b"
         )
     )
 
@@ -240,7 +240,7 @@ async def test_tool_output_captures_1000_chars():
 
     mock_http = AsyncMock()
     ollama = OllamaClient(
-        http_client=mock_http, base_url="http://localhost:11434", model="qwen3:8b"
+        http_client=mock_http, base_url="http://localhost:11434", model="qwen3.5:9b"
     )
 
     tc = {"function": {"name": "long_tool", "arguments": {}}}

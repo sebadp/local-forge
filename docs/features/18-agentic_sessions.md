@@ -1,8 +1,8 @@
 # Sesiones Agénticas (Agent Mode)
 
-> **Estado:** ✅ Implementado — Wasap puede operar en modo agente autónomo para completar tareas complejas en segundo plano.
+> **Estado:** ✅ Implementado — LocalForge puede operar en modo agente autónomo para completar tareas complejas en segundo plano.
 
-El modo agente transforma a Wasap de un chatbot reactivo a un **"Software Worker" autónomo**. Cuando el
+El modo agente transforma a LocalForge de un chatbot reactivo a un **"Software Worker" autónomo**. Cuando el
 usuario le pide una tarea compleja (crear un PR, refactorizar un módulo, investigar un bug),
 el agente acepta el pedido, responde de inmediato, trabaja en segundo plano, y notifica al usuario cuando termina.
 
@@ -13,7 +13,7 @@ el agente acepta el pedido, responde de inmediato, trabaja en segundo plano, y n
 ```
 Usuario WA: "Crea una rama y arregla el bug del color del header"
     ↓
-Wasap responde: "🤖 Entendido, inicio sesión de trabajo. Te aviso cuando termine."
+LocalForge responde: "🤖 Entendido, inicio sesión de trabajo. Te aviso cuando termine."
     ↓
 [Background: Agent Loop se lanza como asyncio.Task]
     ↓
@@ -24,7 +24,7 @@ Wasap responde: "🤖 Entendido, inicio sesión de trabajo. Te aviso cuando term
     git_commit("fix: change header color to blue")
     git_push("fix/header-color")
     ↓
-Wasap WA: "✅ Sesión completada. Branch 'fix/header-color' lista para PR."
+LocalForge WA: "✅ Sesión completada. Branch 'fix/header-color' lista para PR."
 ```
 
 ---

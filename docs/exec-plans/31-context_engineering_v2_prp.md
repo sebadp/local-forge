@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Reducir y estructurar el contexto enviado a qwen3:8b para maximizar calidad de respuesta.
+Reducir y estructurar el contexto enviado a qwen3.5:9b para maximizar calidad de respuesta.
 Ver PRD (`31-context_engineering_v2_prd.md`) para contexto, decisiones y restricciones.
 
 ## Archivos a Modificar

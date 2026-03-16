@@ -1,6 +1,6 @@
 """ContextBuilder: consolidates multiple context sections into a single structured system prompt.
 
-Uses XML-delimited sections so qwen3:8b can navigate the context efficiently.
+Uses XML-delimited sections so qwen3.5:9b can navigate the context efficiently.
 Replaces the pattern of appending multiple separate system messages.
 
 Usage:

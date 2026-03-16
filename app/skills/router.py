@@ -174,22 +174,66 @@ _CLASSIFIER_PROMPT_TEMPLATE = (
     'Reply with ONLY category names separated by commas, or "none".\n'
     "Categories: {categories}, none\n\n"
     "Examples:\n"
+    # time
     '"what time is it" → time\n'
-    '"15% of 230" → math\n'
-    '"remember that I like coffee" → notes\n'
-    '"search for restaurants nearby" → search\n'
-    '"show my projects" → projects\n'
-    '"tell me a joke" → none\n'
     '"recuerdame en 5 minutos" → time\n'
     '"set a reminder for tomorrow at 3pm" → time\n'
     '"programa un cron diario a las 9" → time\n'
-    '"agrega una nota al proyecto X" → projects\n'
-    '"what are the latest news about AI" → news\n'
+    # math
+    '"15% of 230" → math\n'
+    '"sin(pi/2)" → math\n'
+    # weather
+    '"clima en Buenos Aires" → weather\n'
+    '"que temperatura hace?" → weather\n'
+    # search
+    '"search for restaurants nearby" → search\n'
     '"busca informacion sobre Python 3.13" → search\n'
+    # news
+    '"what are the latest news about AI" → news\n'
+    '"noticias sobre inteligencia artificial" → news\n'
+    # notes
+    '"remember that I like coffee" → notes\n'
+    # projects
+    '"show my projects" → projects\n'
+    '"agrega una nota al proyecto X" → projects\n'
+    '"marca como hecha la tarea 1" → projects\n'
+    '"borra la tarea 2" → projects\n'
+    # selfcode
+    '"cual es tu version?" → selfcode\n'
+    '"mostra la estructura del codigo" → selfcode\n'
+    '"busca en el codigo donde se define classify_intent" → selfcode\n'
+    '"configuracion del runtime" → selfcode\n'
+    '"salud del sistema" → selfcode\n'
+    '"mostra los logs de error" → selfcode\n'
+    '"outline de un archivo" → selfcode\n'
+    # expand
+    '"lista los servidores MCP" → expand\n'
+    '"busca servidores MCP para Slack" → expand\n'
+    # tools
+    '"que herramientas tenes?" → tools\n'
+    '"que herramientas hay en la categoria projects?" → tools\n'
+    # github
+    '"lista las issues de mi repo" → github\n'
+    # evaluation
+    '"mostra las metricas de eval" → evaluation\n'
+    '"cuantas interacciones fallaron?" → evaluation\n'
+    # knowledge
+    '"busca en el grafo de conocimiento" → knowledge\n'
+    # provenance
     '"de donde salió esa memoria" → provenance\n'
     '"who changed my memories" → provenance\n'
+    # automation
     '"show automation rules" → automation\n'
-    '"disable the guardrail alert" → automation\n\n'
+    '"disable the guardrail alert" → automation\n'
+    # none (general chat, greetings, knowledge questions without tools)
+    '"tell me a joke" → none\n'
+    '"hola, como estas?" → none\n'
+    '"cual es la capital de Francia?" → none\n'
+    '"explicame que es la fotosintesis" → none\n'
+    '"gracias por la ayuda" → none\n'
+    # multicategory
+    '"que hora es y como esta el clima?" → time, weather\n'
+    '"calcula 15% de 230 y busca que impuesto aplica" → math, search\n\n'
     "{recent_context}"
     "Message to classify: {user_message}"
 )

@@ -50,6 +50,10 @@ class SpanData:
     def set_metadata(self, data: dict) -> None:
         self._metadata.update(data)
 
+    def set_model(self, model: str) -> None:
+        """Convenience: set the model name for this span (OTel GenAI convention)."""
+        self._metadata["gen_ai.request.model"] = model
+
 
 class TraceContext:
     """Context manager for a single interaction trace.
@@ -70,6 +74,7 @@ class TraceContext:
         recorder: TraceRecorder,
         message_type: str = "text",
         platform: str = "whatsapp",
+        metadata: dict | None = None,
     ) -> None:
         self.trace_id = uuid.uuid4().hex
         self.phone_number = phone_number
@@ -77,6 +82,7 @@ class TraceContext:
         self.message_type = message_type
         self.platform = platform
         self._recorder = recorder
+        self._metadata = metadata
         self._token: contextvars.Token | None = None
         self._output_text: str | None = None
         self._wa_message_id: str | None = None
@@ -89,6 +95,7 @@ class TraceContext:
             self.input_text,
             self.message_type,
             platform=self.platform,
+            metadata=self._metadata,
         )
         return self
 
@@ -122,13 +129,17 @@ class TraceContext:
             raise
         finally:
             latency_ms = (time.monotonic() - start) * 1000
+            # Inject span kind so recorder can apply model fallback for generations
+            final_metadata = dict(span_data._metadata)
+            if kind == "generation":
+                final_metadata.setdefault("_span_kind", "generation")
             await self._recorder.finish_span(
                 span_id,
                 span_data._status,
                 latency_ms,
                 input_data=span_data._input,
                 output_data=span_data._output,
-                metadata=span_data._metadata,
+                metadata=final_metadata if final_metadata else None,
             )
 
     async def add_score(

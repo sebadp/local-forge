@@ -51,9 +51,9 @@ class TestCalibrate:
         assert "m" not in _token_ratios
 
     def test_per_model_separate_ratios(self):
-        calibrate("qwen3:8b", char_count=3200, actual_tokens=1000)
+        calibrate("qwen3.5:9b", char_count=3200, actual_tokens=1000)
         calibrate("llava:7b", char_count=5000, actual_tokens=1000)
-        assert abs(_token_ratios["qwen3:8b"] - 3.2) < 1e-6
+        assert abs(_token_ratios["qwen3.5:9b"] - 3.2) < 1e-6
         assert abs(_token_ratios["llava:7b"] - 5.0) < 1e-6
 
 
@@ -66,9 +66,9 @@ class TestEstimateTokens:
         assert result == 100  # 400 / 4.0
 
     def test_calibrated_model(self):
-        calibrate("qwen3:8b", char_count=3200, actual_tokens=1000)
+        calibrate("qwen3.5:9b", char_count=3200, actual_tokens=1000)
         # ratio = 3.2, so 320 chars → 100 tokens
-        result = estimate_tokens("a" * 320, model="qwen3:8b")
+        result = estimate_tokens("a" * 320, model="qwen3.5:9b")
         assert result == 100
 
     def test_unknown_model_uses_default(self):
@@ -85,14 +85,14 @@ class TestGetCalibrationInfo:
         _reset_ratios()
 
     def test_uncalibrated(self):
-        info = get_calibration_info("qwen3:8b")
+        info = get_calibration_info("qwen3.5:9b")
         assert info["calibrated"] is False
         assert info["chars_per_token"] == _DEFAULT_RATIO
         assert info["known_models"] == []
 
     def test_calibrated(self):
-        calibrate("qwen3:8b", char_count=3200, actual_tokens=1000)
-        info = get_calibration_info("qwen3:8b")
+        calibrate("qwen3.5:9b", char_count=3200, actual_tokens=1000)
+        info = get_calibration_info("qwen3.5:9b")
         assert info["calibrated"] is True
         assert info["chars_per_token"] == 3.2
-        assert "qwen3:8b" in info["known_models"]
+        assert "qwen3.5:9b" in info["known_models"]

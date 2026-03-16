@@ -605,7 +605,7 @@ def _build_context(
     """Build LLM context from pre-fetched data (sync, no DB calls).
 
     Consolidates context into a single system message with XML-delimited sections
-    for better attention focus in qwen3:8b.
+    for better attention focus in qwen3.5:9b.
     """
     from app.context.context_builder import ContextBuilder
 
@@ -1360,14 +1360,23 @@ async def _handle_message(
             except Exception:
                 logger.warning("classify_intent task failed, executor will retry", exc_info=True)
 
-        # Update Langfuse trace tags with intent categories (best-effort, upsert)
-        if trace_ctx and recorder and pre_classified and pre_classified != ["none"]:
+        # Update Langfuse trace tags with intent categories + project (best-effort, upsert)
+        if trace_ctx and recorder:
             try:
                 _platform_tag = "telegram" if msg.user_id.startswith("tg_") else "whatsapp"
-                await recorder.update_trace_tags(
-                    trace_ctx.trace_id,
-                    [_platform_tag] + pre_classified,
-                )
+                _tags = [_platform_tag]
+                if pre_classified and pre_classified != ["none"]:
+                    _tags.extend(pre_classified)
+                # Enrich with active project name if available
+                if projects_summary:
+                    # Extract first project name from summary (format: "**Name** — ...")
+                    import re
+
+                    _proj_match = re.search(r"\*\*(.+?)\*\*", projects_summary)
+                    if _proj_match:
+                        _tags.append(f"project:{_proj_match.group(1)}")
+                if len(_tags) > 1:  # at least platform + something
+                    await recorder.update_trace_tags(trace_ctx.trace_id, _tags)
             except Exception:
                 logger.debug("update_trace_tags failed", exc_info=True)
 
@@ -1461,11 +1470,12 @@ async def _handle_message(
             # Persist context fill rate as trace score (Plan 39 Fase 2)
             if trace_ctx and estimated_tokens:
                 _fill_pct = min(estimated_tokens / _CONTEXT_LIMIT, 1.0)
+                _non_empty = [k for k, v in sections.items() if v > 0]
                 await trace_ctx.add_score(
                     name="context_fill_rate",
                     value=round(_fill_pct, 3),
                     source="system",
-                    comment=f"tokens={estimated_tokens}",
+                    comment=f"tokens={estimated_tokens}, sections: {', '.join(_non_empty)}",
                 )
         except Exception:
             logger.debug("Token budget estimation failed", exc_info=True)
@@ -1691,6 +1701,9 @@ async def _handle_message(
                         repository=repository,
                         failed_check_names=failed_checks_for_curation or None,
                         trace_recorder=recorder,
+                        primary_category=pre_classified[0]
+                        if pre_classified and pre_classified[0] != "none"
+                        else None,
                     )
                 )
             )

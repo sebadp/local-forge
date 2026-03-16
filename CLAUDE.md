@@ -21,14 +21,14 @@
 
 ## Stack
 - **Framework**: FastAPI (async, lifespan pattern)
-- **LLM**: Ollama con **qwen3:8b** (chat) y **llava:7b** (vision)
+- **LLM**: Ollama con **qwen3.5:9b** (chat) y **llava:7b** (vision)
 - **Audio**: faster-whisper (transcripcion local)
 - **DB**: SQLite via aiosqlite + sqlite-vec (vector search)
 - **Embeddings**: nomic-embed-text via Ollama (768 dims)
 - **Python**: 3.11+
 
 ## Modelos de Ollama
-- Chat principal: `qwen3:8b` — NO usar qwen2.5
+- Chat principal: `qwen3.5:9b` — NO usar qwen2.5
 - Vision: `llava:7b`
 - Los defaults estan en `app/config.py`, overrideables via env vars
 - `think: True` solo para qwen3 sin tools. Cuando hay tools en el payload, NO se usa `think`

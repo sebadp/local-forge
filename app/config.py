@@ -62,7 +62,7 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_base_url: str = "http://localhost:11435"
-    ollama_model: str = "qwen3:8b"
+    ollama_model: str = "qwen3.5:9b"
     system_prompt: str = (
         "You are a helpful personal assistant on WhatsApp. "
         "Be friendly. Answer in the same language the user writes in. "
@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     guardrails_default_language: str = "es"  # Fallback when user_text too short for detection
     guardrails_pii_check: bool = True
     guardrails_llm_checks: bool = False  # Activar en Iteración 6
-    guardrails_llm_timeout: float = 3.0  # segundos; 0.5 era demasiado bajo para qwen3:8b local
+    guardrails_llm_timeout: float = 3.0  # segundos; 0.5 era demasiado bajo para qwen3.5:9b local
 
     # Tracing (Fase 2)
     tracing_enabled: bool = True

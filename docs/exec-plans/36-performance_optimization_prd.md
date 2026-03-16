@@ -45,7 +45,7 @@ del sistema ni el modelo LLM.
 ### Out of Scope
 
 - Cambiar de SQLite a PostgreSQL (innecesario para nuestro throughput)
-- Cambiar el modelo LLM (qwen3:8b es fixed)
+- Cambiar el modelo LLM (qwen3.5:9b es fixed)
 - Refactorizar el image flow (separado, menor prioridad)
 - Connection pooling (SQLite es embebido, no aplica)
 - Caching de respuestas LLM (cada mensaje es único)

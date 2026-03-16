@@ -115,6 +115,19 @@ async def lifespan(app: FastAPI):
         from app.tracing.recorder import TraceRecorder
 
         app.state.trace_recorder = TraceRecorder.create(repository)
+
+        # Sync default prompts to Langfuse (idempotent, best-effort)
+        if settings.prompt_versioning_enabled and app.state.trace_recorder.langfuse:
+            try:
+                from app.eval.prompt_registry import PROMPT_DEFAULTS
+
+                for pname, pcontent in PROMPT_DEFAULTS.items():
+                    await app.state.trace_recorder.upsert_prompt(
+                        name=pname, content=pcontent, labels=["default"]
+                    )
+                logger.info("Synced %d default prompts to Langfuse", len(PROMPT_DEFAULTS))
+            except Exception:
+                logger.warning("Failed to sync default prompts to Langfuse", exc_info=True)
     else:
         app.state.trace_recorder = None
 

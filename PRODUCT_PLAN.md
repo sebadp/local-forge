@@ -143,7 +143,7 @@ La diferencia clave: OpenClaw es un framework multi-canal multi-agente. LocalFor
 > El asistente se siente más natural y maneja más que texto.
 
 - **Audio entrante**: descarga de WhatsApp → transcripción con faster-whisper local (async via run_in_executor)
-- **Imágenes entrantes**: descarga → descripción con llava:7b → respuesta contextual con qwen3:8b
+- **Imágenes entrantes**: descarga → descripción con llava:7b → respuesta contextual con qwen3.5:9b
 - **Formato WhatsApp**: conversión markdown→WhatsApp (*bold*, _italic_, ```code```, listas)
 - **Mensajes largos**: split automático (>4096 chars) en múltiples mensajes
 - **Indicador de typing**: emoji ⏳ como reacción durante procesamiento, removido en finally
@@ -361,7 +361,7 @@ Phase D: _build_context() → chat_with_tools (LLM principal, ~3-8s)
 > Router de 2 etapas para escalar a 60+ tools sin degradar la fiabilidad del LLM.
 
 #### Problema
-qwen3:8b maneja de forma fiable ~5-6 tools en el payload de Ollama. Con 60+ tools el modelo ignora todas las tools.
+qwen3.5:9b maneja de forma fiable ~5-6 tools en el payload de Ollama. Con 60+ tools el modelo ignora todas las tools.
 
 #### Solución: Router de 2 etapas
 
@@ -538,13 +538,13 @@ vec_notes (sqlite-vec virtual table)
 
 | Modelo | Params | RAM Mín. | Caso de uso | Español | Tools |
 |---|---|---|---|---|---|
-| `qwen3:8b` | 8B | 8GB | **Recomendado — chat + tools** | Excelente | Sí |
+| `qwen3.5:9b` | 9B | 8GB | **Recomendado — chat + tools** | Excelente | Sí |
 | `llava:7b` | 7B | 8GB | Multimodal — imágenes | Limitado | No |
 | `nomic-embed-text` | 137M | 1GB | Embeddings (768 dims) | Sí | — |
 | `llama3.2:8b` | 8B | 8GB | Alternativa chat | Bueno | Sí |
 | `llama3.2:3b` | 3B | 4GB | Hardware limitado | Aceptable | Limitado |
 
-**Recomendación**: usar `qwen3:8b` para chat + tool calling, `llava:7b` para visión, y `nomic-embed-text` para embeddings.
+**Recomendación**: usar `qwen3.5:9b` para chat + tool calling, `llava:7b` para visión, y `nomic-embed-text` para embeddings.
 
 ---
 
@@ -650,7 +650,7 @@ Todo gratis. El número de test tiene limitación de 5 destinatarios en modo des
 # Primer uso
 cp .env.example .env        # Configurar tokens
 docker compose up -d         # Levanta todo
-docker compose exec ollama ollama pull qwen3:8b   # Descargar modelo
+docker compose exec ollama ollama pull qwen3.5:9b   # Descargar modelo
 
 # Uso diario
 docker compose up -d         # Listo

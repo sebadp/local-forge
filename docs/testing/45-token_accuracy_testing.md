@@ -14,8 +14,8 @@ docker compose logs -f localforge 2>&1 | grep "token.calibration"
 ```
 
 Confirmar la línea:
-- `token.calibration: model=qwen3:8b ratio=X.XXX (was uncalibrated)` — primera calibración
-- `token.calibration: model=qwen3:8b ratio=X.XXX (was Y.YYY)` — calibraciones sucesivas
+- `token.calibration: model=qwen3.5:9b ratio=X.XXX (was uncalibrated)` — primera calibración
+- `token.calibration: model=qwen3.5:9b ratio=X.XXX (was Y.YYY)` — calibraciones sucesivas
 
 ---
 
@@ -23,7 +23,7 @@ Confirmar la línea:
 
 | Mensaje / Acción | Resultado esperado |
 |---|---|
-| Enviar primer mensaje al bot | Log `token.calibration: model=qwen3:8b ratio=... (was uncalibrated)` |
+| Enviar primer mensaje al bot | Log `token.calibration: model=qwen3.5:9b ratio=... (was uncalibrated)` |
 | Enviar 5+ mensajes | Ratio se estabiliza (cambios <0.1 entre requests) |
 | Enviar mensaje largo (>2000 chars) | Calibración con datos más representativos, ratio converge más rápido |
 | Enviar mensaje corto ("hola") | Calibración ocurre pero con datos mínimos — ratio cambia poco (EMA suaviza) |
@@ -82,7 +82,7 @@ Después de 10+ mensajes, verificar que el ratio se ha estabilizado:
 ```python
 # Desde un shell Python con el app corriendo
 from app.context.token_estimator import get_calibration_info
-info = get_calibration_info("qwen3:8b")
+info = get_calibration_info("qwen3.5:9b")
 print(f"Calibrado: {info['calibrated']}, Ratio: {info['chars_per_token']}")
 # Esperado: Calibrado: True, Ratio: ~3.0-3.5 (depende del tokenizer de qwen3)
 ```
@@ -105,4 +105,4 @@ print(f"Calibrado: {info['calibrated']}, Ratio: {info['chars_per_token']}")
 | Variable (`.env`) | Valor de test | Efecto |
 |---|---|---|
 | `LOG_LEVEL` | `DEBUG` | Hace visibles los logs de `token.calibration` |
-| `OLLAMA_MODEL` | `qwen3:8b` | Modelo cuyo ratio se calibra |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Modelo cuyo ratio se calibra |

@@ -16,7 +16,7 @@ Tu celular ──► Telegram  ──► Bot API ─────────┘ 
 Si estás buscando dar el salto al desarrollo con IA, en este repositorio vas a encontrar implementaciones prácticas y modulares de:
 
 - **Memoria y Contexto (RAG Local)**: Historial respaldado en SQLite con memoria en 3 capas (semántica, episódica reciente e histórica). Usa embeddings automáticos (`nomic-embed-text`) y búsqueda vectorial con `sqlite-vec` para inyectar solo el contexto relevante.
-- **Tool Calling / Agentes**: El LLM (como `qwen3:8b`) toma decisiones autónomas: desde consultar el clima o resolver matemáticas, hasta abrir y leer archivos del sistema de forma dinámica.
+- **Tool Calling / Agentes**: El LLM (como `qwen3.5:9b`) toma decisiones autónomas: desde consultar el clima o resolver matemáticas, hasta abrir y leer archivos del sistema de forma dinámica.
 - **Model Context Protocol (MCP)**: Integración nativa con servidores MCP. Permite auto-expandir las capacidades del asistente en *runtime* instalando servidores desde plataformas como Smithery.
 - **Edición Bidireccional (`MEMORY.md`)**: El sistema sincroniza las memorias en texto plano con la base de datos automáticamente (usando *watchdogs* de *filesystem*).
 - **Consolidación de Memoria**: Resúmenes automáticos y extracción de hechos y eventos en *background* antes de compactar el historial.
@@ -36,7 +36,7 @@ cp .env.example .env
 docker compose --profile dev up -d
 
 # 3. Descargar modelos
-docker compose --profile dev exec ollama ollama pull qwen3:8b
+docker compose --profile dev exec ollama ollama pull qwen3.5:9b
 docker compose --profile dev exec ollama ollama pull llava:7b
 docker compose --profile dev exec ollama ollama pull nomic-embed-text
 
@@ -250,7 +250,7 @@ Variables de entorno (ver [.env.example](.env.example)):
 | Variable | Descripción | Default |
 |----------|-------------|---------|
 | `OLLAMA_BASE_URL` | URL de Ollama | `http://localhost:11435` |
-| `OLLAMA_MODEL` | Modelo de chat | `qwen3:8b` |
+| `OLLAMA_MODEL` | Modelo de chat | `qwen3.5:9b` |
 | `VISION_MODEL` | Modelo de visión | `llava:7b` |
 | `SYSTEM_PROMPT` | Prompt del sistema | (ver .env.example) |
 | `CONVERSATION_MAX_MESSAGES` | Mensajes recientes en contexto | `20` |
@@ -365,7 +365,7 @@ sudo chown -R $(id -u):$(id -g) data/
 
 | Modelo | Params | RAM | Español | Uso |
 |--------|--------|-----|---------|-----|
-| `qwen3:8b` | 8B | 8GB | Excelente | Chat + tool calling |
+| `qwen3.5:9b` | 9B | 8GB | Excelente | Chat + tool calling |
 | `llava:7b` | 7B | 8GB | Limitado | Vision (imágenes) |
 | `nomic-embed-text` | 137M | 1GB | Si | Embeddings (768 dims) |
 | `llama3.2:8b` | 8B | 8GB | Bueno | Chat alternativo |

@@ -107,7 +107,7 @@ END-TO-END LATENCY
   end_to_end: p50=2100ms  p95=5800ms  p99=9200ms  max=14000ms  (n=139)
 ```
 
-- **p50 < 2000ms**: excelente para mensajes simples con qwen3:8b en local.
+- **p50 < 2000ms**: excelente para mensajes simples con qwen3.5:9b en local.
 - **p50 2000–4000ms**: normal con tools activos.
 - **p95 > 8000ms**: revisar si hay outliers en `tool_loop` o `phase_ab`.
 - **p99 > 15000ms**: posible timeout o bloqueo en una operación async.
@@ -211,7 +211,7 @@ print(f'p50: {p50_a:.0f}ms → {p50_b:.0f}ms  ({(p50_b-p50_a)/p50_a*100:+.1f}%)'
 
 ---
 
-## Targets de referencia (qwen3:8b sin GPU)
+## Targets de referencia (qwen3.5:9b sin GPU)
 
 Estos son valores orientativos para un setup local típico (Apple Silicon M1/M2 o equivalente):
 

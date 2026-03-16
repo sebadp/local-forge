@@ -32,7 +32,7 @@ El agent loop actual (`app/agent/loop.py`) usa un single-loop reactivo: un solo 
 ### Out of Scope
 - Multi-agent paralelo (por ahora workers son secuenciales)
 - Cambios al tool calling loop principal (`execute_tool_loop` para el flujo normal de chat)
-- Nuevos modelos LLM (todo usa qwen3:8b)
+- Nuevos modelos LLM (todo usa qwen3.5:9b)
 - UI/UX changes en WhatsApp (el output sigue siendo texto)
 
 ## Casos de Uso Críticos
@@ -43,7 +43,7 @@ El agent loop actual (`app/agent/loop.py`) usa un single-loop reactivo: un solo 
 
 ## Restricciones Arquitectónicas / Requerimientos Técnicos
 
-- **Modelo**: qwen3:8b — context window limitado, requiere prompts concisos y outputs JSON simples
+- **Modelo**: qwen3.5:9b — context window limitado, requiere prompts concisos y outputs JSON simples
 - **Backward compatibility**: Todas las sesiones agénticas usan el planner. Si el JSON parse del plan falla → fallback a plan lineal (1 task type=general)
 - **Seguridad**: Workers heredan el PolicyEngine + AuditTrail existente via hitl_callback
 - **Persistencia**: Plan snapshots incluidos en el JSONL de persistence.py

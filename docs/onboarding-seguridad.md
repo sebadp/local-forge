@@ -759,13 +759,13 @@ tests/                         # Tests (pytest, asyncio_mode=auto)
 
 ### "El LLM ignora todas las tools"
 
-**Causa**: Demasiadas tools en el payload (>6). qwen3:8b no las procesa.
+**Causa**: Demasiadas tools en el payload (>6). qwen3.5:9b no las procesa.
 **Fix**: El router limita a `max_tools_per_call` (default 8). Verificar que `classify_intent`
 retorna categorias correctas.
 
 ### "El LLM usa `think` con tools y se rompe"
 
-**Causa**: qwen3:8b no soporta `think: True` + tools simultaneamente.
+**Causa**: qwen3.5:9b no soporta `think: True` + tools simultaneamente.
 **Fix**: `chat_with_tools()` ya deshabilita `think` cuando hay tools presentes.
 
 ### "Los guardrails bloquean respuestas cortas en otro idioma"
