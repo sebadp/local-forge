@@ -147,6 +147,9 @@ async def compact_tool_output(
 
             max_length = Settings().compaction_threshold  # type: ignore[call-arg]
         except Exception:
+            logger.warning(
+                "Failed to load Settings, using default compaction_threshold", exc_info=True
+            )
             max_length = 20000
 
     if len(text) <= max_length:
