@@ -198,6 +198,15 @@ class Settings(BaseSettings):
     web_search_fetch_timeout: float = 8.0  # per-page fetch timeout (seconds)
     web_search_extract_page_limit: int = 2500  # chars per page sent to LLM extraction
 
+    # Web Research composite tool (Plan 51)
+    web_research_max_pages: int = 8
+    web_research_fetch_timeout: float = 8.0
+    web_research_max_concurrent: int = 6
+    web_research_chunk_size: int = 1500
+    web_research_top_k: int = 8
+    web_research_similarity_threshold: float = 0.2
+    web_research_max_output_chars: int = 12000
+
     # Ontology (Plan 42)
     ontology_enabled: bool = True
 
