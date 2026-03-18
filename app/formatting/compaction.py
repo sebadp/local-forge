@@ -200,7 +200,14 @@ async def compact_tool_output(
         trace = get_current_trace()
         if trace:
             async with trace.span("llm:compact_output", kind="generation") as _span:
-                _span.set_input({"tool_name": tool_name, "original_len": len(text)})
+                _span.set_input(
+                    {
+                        "tool_name": tool_name,
+                        "original_len": len(text),
+                        "user_request": user_request[:200],
+                        "text_preview": text[:500],
+                    }
+                )
                 summary = await ollama_client.chat(messages, model=None, think=False)
                 _span.set_output({"compacted_len": len(summary) if summary else 0})
         else:

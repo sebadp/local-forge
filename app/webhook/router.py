@@ -455,7 +455,10 @@ def _build_capabilities_section(
     if not sections:
         return None
 
-    header = "You have the following capabilities. Use them proactively when the user's message is relevant."
+    header = (
+        "You have the following capabilities and CAN use them right now. "
+        "Use them proactively. NEVER claim you lack these abilities — you have them."
+    )
     meta_note = (
         "\nTool expansion: if the current tools are insufficient for the task, "
         "call request_more_tools(categories=[...]) to load additional tool categories dynamically."
@@ -534,7 +537,10 @@ def _build_capabilities_for_categories(
     if not sections:
         return None
 
-    header = "You have the following capabilities. Use them proactively when the user's message is relevant."
+    header = (
+        "You have the following capabilities and CAN use them right now. "
+        "Use them proactively. NEVER claim you lack these abilities — you have them."
+    )
     meta_note = (
         "\nTool expansion: if the current tools are insufficient for the task, "
         "call request_more_tools(categories=[...]) to load additional tool categories dynamically."
@@ -803,7 +809,13 @@ async def _handle_guardrail_failure(
     # Empty: try once more
     if "not_empty" in failed_names:
         try:
-            retry = await ollama_client.chat(context)
+            if trace_ctx:
+                async with trace_ctx.span("guardrails:remediation", kind="generation") as span:
+                    span.set_input({"check": "not_empty", "context_messages": len(context)})
+                    retry = await ollama_client.chat(context)
+                    span.set_output({"retry_empty": not bool(retry and retry.strip())})
+            else:
+                retry = await ollama_client.chat(context)
             current_reply = retry if retry.strip() else "Disculpa, no pude generar una respuesta."
         except Exception:
             current_reply = "Disculpa, no pude generar una respuesta."
@@ -860,9 +872,17 @@ async def _handle_guardrail_failure(
         ]
         try:
             if trace_ctx:
-                async with trace_ctx.span("guardrails:remediation", kind="generation") as span:
-                    span.set_metadata({"check": "language_match", "lang_code": detected_code})
+                async with trace_ctx.span("guardrails:remediation_lang", kind="generation") as span:
+                    span.set_input(
+                        {
+                            "check": "language_match",
+                            "lang_code": detected_code,
+                            "original_reply": original_reply[:300],
+                            "hint": hint_content,
+                        }
+                    )
                     retry = await ollama_client.chat(remediation_context)
+                    span.set_output({"retry_preview": (retry or "")[:300]})
             else:
                 retry = await ollama_client.chat(remediation_context)
             if retry.strip():
@@ -1193,7 +1213,9 @@ async def _handle_message(
         # save_message runs concurrently with the build (independent side effect)
         if trace_ctx:
             async with trace_ctx.span("phase_ab") as span:
-                span.set_metadata({"phase": "context_build+save"})
+                span.set_input(
+                    {"user_text": user_text[:300] if user_text else "", "phone": msg.user_id}
+                )
                 ctx, _ = await asyncio.gather(
                     ConversationContext.build(
                         phone_number=msg.user_id,
@@ -1213,6 +1235,16 @@ async def _handle_message(
                     span.set_metadata(ctx.build_timing)
                 if ctx.search_stats:
                     span.set_metadata(ctx.search_stats)
+                span.set_output(
+                    {
+                        "memories_count": len(ctx.memories) if ctx.memories else 0,
+                        "history_count": len(ctx.history) if ctx.history else 0,
+                        "has_summary": bool(ctx.summary),
+                        "has_daily_logs": bool(ctx.daily_logs),
+                        "has_projects": bool(ctx.projects_summary),
+                        "notes_count": len(ctx.relevant_notes) if ctx.relevant_notes else 0,
+                    }
+                )
         else:
             ctx, _ = await asyncio.gather(
                 ConversationContext.build(
@@ -1495,7 +1527,13 @@ async def _handle_message(
             if trace_ctx:
                 if has_tools:
                     async with trace_ctx.span("tool_loop", kind="span") as loop_span:
-                        loop_span.set_input({"categories": pre_classified})
+                        loop_span.set_input(
+                            {
+                                "categories": pre_classified,
+                                "context_messages": len(context),
+                                "system_prompt_chars": len(context[0].content) if context else 0,
+                            }
+                        )
                         reply = await execute_tool_loop(
                             context,
                             ollama_client,
@@ -1510,10 +1548,14 @@ async def _handle_message(
                             repository=repository,
                             embed_model=settings.embedding_model,
                         )
-                        loop_span.set_output({"reply_preview": reply[:100]})
+                        loop_span.set_output({"reply_preview": reply[:300]})
+                        if ctx.token_estimate:
+                            loop_span.set_metadata({"token_estimate": ctx.token_estimate})
                 else:
                     async with trace_ctx.span("llm:chat", kind="generation") as gen_span:
-                        gen_span.set_input({"message_count": len(context)})
+                        from app.skills.executor import _serialize_messages_for_trace
+
+                        gen_span.set_input(_serialize_messages_for_trace(context))
                         response = await ollama_client.chat_with_tools(context, tools=None)
                         gen_span.set_metadata(
                             {
@@ -1574,12 +1616,33 @@ async def _handle_message(
             )
             if trace_ctx:
                 async with trace_ctx.span("guardrails", kind="guardrail") as span:
+                    span.set_input(
+                        {
+                            "user_text": user_text[:300] if user_text else "",
+                            "reply": reply[:500],
+                            "tool_calls_used": tools_were_used,
+                        }
+                    )
                     guardrail_report = await run_guardrails(
                         user_text=user_text,
                         reply=reply,
                         tool_calls_used=tools_were_used,
                         settings=settings,
                         ollama_client=ollama_client,
+                    )
+                    span.set_output(
+                        {
+                            "passed": guardrail_report.passed,
+                            "total_latency_ms": guardrail_report.total_latency_ms,
+                            "results": [
+                                {
+                                    "check": r.check_name,
+                                    "passed": r.passed,
+                                    "detail": (r.details[:200] if r.details else None),
+                                }
+                                for r in guardrail_report.results
+                            ],
+                        }
                     )
                     span.set_metadata(
                         {

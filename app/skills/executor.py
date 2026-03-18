@@ -30,6 +30,34 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 5
 
+# Truncation limits for Langfuse span inputs (avoid huge payloads)
+_SYSTEM_MSG_PREVIEW_LEN = 2000
+_MSG_PREVIEW_LEN = 500
+
+
+def _serialize_messages_for_trace(
+    messages: list[ChatMessage],
+    tools: list[dict] | None = None,
+) -> dict:
+    """Serialize messages + tool names for Langfuse span input.
+
+    System messages are truncated to 2000 chars (enough to see prompt + memories),
+    other messages to 500 chars. Tool calls in assistant messages are included.
+    """
+    serialized = []
+    for m in messages:
+        limit = _SYSTEM_MSG_PREVIEW_LEN if m.role == "system" else _MSG_PREVIEW_LEN
+        entry: dict = {"role": m.role, "content": (m.content or "")[:limit]}
+        if m.tool_calls:
+            entry["tool_calls"] = [tc.get("function", {}).get("name", "") for tc in m.tool_calls]
+        serialized.append(entry)
+    result: dict = {"messages": serialized}
+    if tools:
+        result["tool_names"] = [t.get("function", {}).get("name", "") for t in tools]
+        result["tool_count"] = len(tools)
+    return result
+
+
 # Module-level cache: tools don't change at runtime after initialization
 _cached_tools_map: dict[str, dict] | None = None
 
@@ -384,9 +412,7 @@ async def execute_tool_loop(
             async with trace.span(
                 f"llm:iteration_{iteration + 1}", kind="generation", parent_id=parent_span_id
             ) as gen_span:
-                gen_span.set_input(
-                    {"message_count": len(working_messages), "tool_count": len(tools)}
-                )
+                gen_span.set_input(_serialize_messages_for_trace(working_messages, tools))
                 response = await ollama_client.chat_with_tools(working_messages, tools=tools)
                 gen_span.set_metadata(
                     {
@@ -563,7 +589,8 @@ async def execute_tool_loop(
             if added:
                 confirmation = (
                     f"Loaded {len(added)} new tools: {', '.join(added)}. "
-                    "These tools are now available — use them in your next call to complete the task."
+                    "IMPORTANT: Call these tools NOW to complete the task. "
+                    "Do NOT reply with text saying you will use them — actually call them immediately."
                 )
             else:
                 confirmation = "No new tools added (already available or unknown category/query)"

@@ -170,6 +170,8 @@ async def test_language_remediation_creates_span_when_trace_ctx_provided():
     span_mock.__aenter__ = AsyncMock(return_value=span_mock)
     span_mock.__aexit__ = AsyncMock(return_value=None)
     span_mock.set_metadata = MagicMock()
+    span_mock.set_input = MagicMock()
+    span_mock.set_output = MagicMock()
 
     trace_ctx_mock = MagicMock()
     trace_ctx_mock.span = MagicMock(return_value=span_mock)
@@ -182,12 +184,13 @@ async def test_language_remediation_creates_span_when_trace_ctx_provided():
     )
 
     # span() must have been called with the correct name and kind
-    trace_ctx_mock.span.assert_called_once_with("guardrails:remediation", kind="generation")
-    # set_metadata must include check and lang_code
-    span_mock.set_metadata.assert_called_once()
-    meta = span_mock.set_metadata.call_args[0][0]
-    assert meta["check"] == "language_match"
-    assert meta["lang_code"] == "fr"
+    trace_ctx_mock.span.assert_called_once_with("guardrails:remediation_lang", kind="generation")
+    # set_input must include check, lang_code, original_reply, hint
+    span_mock.set_input.assert_called_once()
+    input_data = span_mock.set_input.call_args[0][0]
+    assert input_data["check"] == "language_match"
+    assert input_data["lang_code"] == "fr"
+    assert "Wrong reply" in input_data["original_reply"]
 
 
 async def test_language_remediation_no_span_without_trace_ctx():
