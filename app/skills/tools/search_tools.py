@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import time
 from typing import TYPE_CHECKING
 
@@ -267,10 +268,10 @@ def register(
                 return f"{snippets}\n\n---\n## Extracted content from top results:\n\n{extracted}"
 
             except Exception:
-                # Ensure span closes on error
+                # Ensure span closes on error — propagate exc info so span records as "failed"
                 if trace and detailed_span_id:
                     try:
-                        await detailed_ctx.__aexit__(None, None, None)
+                        await detailed_ctx.__aexit__(*sys.exc_info())
                     except Exception:
                         pass
                 raise

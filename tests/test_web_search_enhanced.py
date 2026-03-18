@@ -755,3 +755,66 @@ class TestObservability:
             )
 
         assert len(span_names) == 0
+
+    async def test_detailed_span_receives_exception_on_error(self):
+        """When extraction fails, the detailed span's __aexit__ receives the exception."""
+        client = _mock_ollama()
+        # Make LLM extraction blow up
+        client.chat = AsyncMock(side_effect=RuntimeError("LLM crashed"))
+        reg = _make_registry(ollama_client=client)
+
+        aexit_args: list[tuple] = []
+
+        class FakeSpan:
+            def __init__(self, name, kind, parent_id=None):
+                self.span_id = f"span_{name}"
+                self._name = name
+
+            def set_input(self, data):
+                pass
+
+            def set_output(self, data):
+                pass
+
+            def set_metadata(self, data):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                if self._name == "web_search:detailed":
+                    aexit_args.append((exc_type, exc_val, exc_tb))
+
+        def fake_span(name, kind="span", parent_id=None):
+            return FakeSpan(name, kind, parent_id)
+
+        mock_trace = MagicMock()
+        mock_trace.span = fake_span
+
+        with (
+            patch("app.skills.tools.search_tools.DDGS") as MockDDGS,
+            patch("app.skills.tools.search_tools.get_current_trace", return_value=mock_trace),
+            patch(
+                "app.skills.tools.web_extraction.fetch_and_extract",
+                side_effect=[
+                    ("http://example.com/1", "Some page content"),
+                    ("http://example.com/2", None),
+                    ("http://example.com/3", None),
+                ],
+            ),
+        ):
+            MockDDGS.return_value.text.return_value = _MOCK_RESULTS
+            await reg.execute_tool(
+                ToolCall(
+                    name="web_search",
+                    arguments={"query": "test", "depth": "detailed"},
+                )
+            )
+
+        # The outer except catches the RuntimeError and returns an error string,
+        # but the detailed span's __aexit__ should have received the exception
+        assert len(aexit_args) == 1
+        exc_type, exc_val, exc_tb = aexit_args[0]
+        assert exc_type is RuntimeError
+        assert "LLM crashed" in str(exc_val)
