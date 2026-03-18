@@ -113,6 +113,7 @@
 ## Tools (Misc)
 
 - **Web search** (`app/skills/tools/search_tools.py` + `news_tools.py`): Uses `ddgs` package (NOT `duckduckgo-search` — renamed upstream). `DDGS().text(query, ...)` and `DDGS().news(query, ...)` — first arg is positional `query` (not `keywords`).
+- **Web research** (Exec Plan 51, `app/skills/tools/search_tools.py`): Composite tool `web_research` — multi-query search → parallel fetch → trafilatura extract → chunk by headings → embed with `nomic-embed-text` (prefixes `search_query:`/`search_document:`) → cosine similarity rank → top-K output. Retry if < 2 chunks or best_sim < 0.25. Output capped at `web_research_max_output_chars` (12K). `_dedup_urls()` normalizes URLs (strip query params, trailing slash). `chunk_text()` and `rank_chunks()` live in `web_extraction.py`. Router auto-includes `"fetch"` category when `"search"` is classified (Plan 51 quick win in `select_tools()`). Langfuse hierarchy: `web_research:pipeline` → `:search`, `:fetch`, `:rank`, `:retry`.
 - **Datetime tools** (`app/skills/tools/datetime_tools.py`): `_TZ_ALIASES` dict maps Argentine province timezones to valid IANA zones. `convert_timezone()` uses today's date for time-only inputs (prevents year 1900 bug).
 - **Debug tools** (`app/skills/tools/debug_tools.py`): 5 tools — `review_interactions`, `get_tool_output_full`, `get_interaction_context`, `write_debug_report`, `get_conversation_transcript`. Gated by `tracing_enabled`. Reports saved to `data/debug_reports/`. Category `"debugging"`.
 
