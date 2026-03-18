@@ -35,7 +35,7 @@ def register_builtin_tools(
     register_datetime(registry)
     register_calculator(registry)
     register_weather(registry)
-    register_search(registry)
+    register_search(registry, ollama_client=ollama_client, settings=settings)
     register_docs(registry)
     register_notes(
         registry,

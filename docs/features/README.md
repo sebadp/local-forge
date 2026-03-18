@@ -53,6 +53,7 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Operational Automation (data-driven triggers, metric alerts, self-healing) | [`47-operational_automation.md`](47-operational_automation.md) | Exec Plan 47 |
 | Langfuse v3 — Observabilidad, Stack de Servicios e Instrumentación Avanzada | [`48-langfuse_v3.md`](48-langfuse_v3.md) | Observability |
 | Regression Eval Suite (seed dataset, classify/tools/e2e modes, CI-compatible) | [`49-regression_eval_suite.md`](49-regression_eval_suite.md) | Eval |
+| Web Search Enhanced (depth param, auto-fetch, LLM extraction) | [`52-web_search_enhanced.md`](52-web_search_enhanced.md) | Exec Plan 52 |
 
 ## Cómo crear un nuevo walkthrough
 
