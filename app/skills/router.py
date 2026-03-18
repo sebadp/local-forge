@@ -31,7 +31,7 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
     ],
     "math": ["calculate"],
     "weather": ["get_weather"],
-    "search": ["web_search"],
+    "search": ["web_search", "web_research"],
     "news": ["search_news", "add_news_preference"],
     "notes": ["save_note", "list_notes", "search_notes", "delete_note", "get_note"],
     "knowledge": ["search_knowledge_graph"],
@@ -401,10 +401,16 @@ def select_tools(
     if not categories:
         return []
 
+    # Auto-include "fetch" when "search" is requested (Plan 51) so the LLM has
+    # access to Puppeteer/mcp-fetch tools alongside search tools.
+    expanded = list(categories)
+    if "search" in expanded and "fetch" in TOOL_CATEGORIES and "fetch" not in expanded:
+        expanded.append("fetch")
+
     # Filter to categories that are actually registered — dynamic categories like "fetch"
     # may not exist when the corresponding MCP server isn't running. Including phantom
     # categories inflates len(categories) and lowers per_cat, wasting tool budget.
-    active_categories = [c for c in categories if c in TOOL_CATEGORIES]
+    active_categories = [c for c in expanded if c in TOOL_CATEGORIES]
     if not active_categories:
         return []
 
