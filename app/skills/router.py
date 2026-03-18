@@ -317,7 +317,14 @@ async def classify_intent(
         trace = get_current_trace()
         if trace:
             async with trace.span("llm:classify_intent", kind="generation") as _cls_span:
-                _cls_span.set_input({"user_message": user_message[:200]})
+                _cls_span.set_input(
+                    {
+                        "user_message": user_message,
+                        "prompt": prompt[:3000],
+                        "has_recent_context": bool(recent_messages),
+                        "sticky_categories": sticky_categories,
+                    }
+                )
                 response = await ollama_client.chat_with_tools(messages, tools=None, think=False)
                 _cls_span.set_metadata(
                     {

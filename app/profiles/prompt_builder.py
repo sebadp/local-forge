@@ -5,6 +5,13 @@ def build_system_prompt(base: str, profile: dict, current_date: str) -> str:
     """Build a personalized system prompt from base + user profile data."""
     lines = [base]
 
+    # Date FIRST — before any profile data — with emphatic format so the LLM
+    # cannot override it with its training-data prior (RC-1, Plan 50).
+    lines.append(
+        f"\nIMPORTANT — Today is {current_date}. This is the REAL current date. "
+        "Do NOT assume any other date from your training data."
+    )
+
     if name := profile.get("name"):
         lines.append(f"The user's name is {name}.")
     if assistant_name := profile.get("assistant_name"):
@@ -27,5 +34,4 @@ def build_system_prompt(base: str, profile: dict, current_date: str) -> str:
             "\n[🪲 DEBUG MODE ENABLED]: You are currently in auto-debug mode. If the user reports an error or asks to investigate, proactively use `get_recent_logs` to check internal backend execution errors, and `get_recent_messages` to review past conversation turns. Explain technical root causes explicitly."
         )
 
-    lines.append(f"\nCurrent Date: {current_date}")
     return "\n".join(lines)

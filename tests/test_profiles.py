@@ -161,7 +161,7 @@ async def test_onboarding_preserves_existing_data():
 def test_build_system_prompt_no_profile():
     result = build_system_prompt("Base prompt.", {}, "2026-02-19")
     assert "Base prompt." in result
-    assert "Current Date: 2026-02-19" in result
+    assert "Today is 2026-02-19" in result
     # No profile lines added
     assert "The user's name" not in result
 
@@ -186,7 +186,7 @@ def test_build_system_prompt_full_profile():
     assert "Interests: music." in result
     assert "Location: Buenos Aires." in result
     assert "Preferences: brief answers." in result
-    assert "Current Date: 2026-02-19" in result
+    assert "Today is 2026-02-19" in result
 
 
 def test_build_system_prompt_partial_profile():

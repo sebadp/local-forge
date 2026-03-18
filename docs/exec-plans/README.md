@@ -34,6 +34,7 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | Deployment Maturity — Health checks, secrets, image versioning, CI/CD | [`46-deployment_maturity_prd.md`](46-deployment_maturity_prd.md) / [`46-deployment_maturity_prp.md`](46-deployment_maturity_prp.md) | ✅ Completado |
 | Operational Automation — Data-driven triggers, metric alerts, self-healing | [`47-operational_automation_prd.md`](47-operational_automation_prd.md) / [`47-operational_automation_prp.md`](47-operational_automation_prp.md) | ✅ Completado |
 | Regression Eval Suite — LLM-as-Judge Enhancement, E2E fix, verbose output | [`49-regression_eval_suite_prd.md`](49-regression_eval_suite_prd.md) / [`49-regression_eval_suite_prp.md`](49-regression_eval_suite_prp.md) | 🚧 En progreso |
+| LLM Tool Awareness & Langfuse Full Observability — Prompt fixes + tracing inputs | [`50-llm_awareness_langfuse_observability_prd.md`](50-llm_awareness_langfuse_observability_prd.md) / [`50-llm_awareness_langfuse_observability_prp.md`](50-llm_awareness_langfuse_observability_prp.md) | 📋 Planificado |
 
 ## Convenciones
 

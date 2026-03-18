@@ -396,7 +396,7 @@ async def _run_planner_session(
     trace = get_current_trace()
     if trace:
         async with trace.span("planner:create_plan", kind="span") as span:
-            span.set_input({"objective": session.objective[:200]})
+            span.set_input({"objective": session.objective})
             plan = await create_plan(session.objective, ollama_client)
             span.set_output({"tasks": len(plan.tasks), "plan_preview": plan.to_markdown()[:500]})
     else:
@@ -626,7 +626,15 @@ async def _run_reactive_session(
         trace = get_current_trace()
         if trace:
             async with trace.span(f"reactive:round_{iteration + 1}", kind="span") as round_span:
-                round_span.set_input({"iteration": iteration + 1})
+                from app.skills.executor import _serialize_messages_for_trace
+
+                round_span.set_input(
+                    {
+                        "iteration": iteration + 1,
+                        "message_count": len(messages),
+                        **_serialize_messages_for_trace(messages),
+                    }
+                )
                 reply = await execute_tool_loop(
                     messages=messages,
                     ollama_client=ollama_client,
