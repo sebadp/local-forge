@@ -44,6 +44,7 @@ Cada archivo en este directorio cubre el testing manual de una feature específi
 | Deployment Maturity (liveness, readiness, Docker healthcheck, profiles, release) | [`46-deployment_maturity_testing.md`](46-deployment_maturity_testing.md) |
 | Operational Automation (data-driven triggers, metric alerts, self-healing) | [`47-operational_automation_testing.md`](47-operational_automation_testing.md) |
 | Regression Eval Suite (seed, classify/tools/e2e, CI-compatible) | [`49-regression_eval_suite_testing.md`](49-regression_eval_suite_testing.md) |
+| Web Search Enhanced (depth param, auto-fetch, LLM extraction) | [`52-web_search_enhanced_testing.md`](52-web_search_enhanced_testing.md) |
 
 ## Convenciones
 

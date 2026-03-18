@@ -193,6 +193,11 @@ class Settings(BaseSettings):
     # Disable via METRICS_PERCENTILES_ENABLED=false if memory becomes an issue
     # (e.g. when span count exceeds ~100K).
 
+    # Web Search enhanced (Plan 52)
+    web_search_fetch_top_n: int = 3  # pages to fetch in detailed mode
+    web_search_fetch_timeout: float = 8.0  # per-page fetch timeout (seconds)
+    web_search_extract_page_limit: int = 2500  # chars per page sent to LLM extraction
+
     # Ontology (Plan 42)
     ontology_enabled: bool = True
 
