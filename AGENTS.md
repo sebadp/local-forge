@@ -117,7 +117,7 @@ Los skills son la **unidad de extensión del sistema**. Mantienen el scope de lo
 | `weather` | Clima actual y pronóstico (wttr.in) | `get_weather` |
 | `notes` | CRUD de notas personales (SQLite) | `save_note`, `list_notes`, `search_notes`, `delete_note` |
 | `projects` | Proyectos, tareas y seguimiento | `create_project`, `add_task`, `update_task`, ... |
-| `search` | Búsqueda web (ddgs) | `web_search` |
+| `search` | Búsqueda web (ddgs) + deep research (fetch+chunk+embed+rank) | `web_search`, `web_research` |
 | `news` | Noticias con preferencias guardadas | `search_news`, `add_news_preference` |
 | `scheduler` | Recordatorios y crons vía APScheduler | `schedule_task`, `list_schedules`, `create_cron`, `list_crons`, `delete_cron` |
 | `selfcode` | Auto-inspección del sistema | `get_version_info`, `get_runtime_config`, `search_source_code`, `get_file_outline`, `read_lines`, `write_source_file`, `apply_patch`, `preview_patch` |
