@@ -134,6 +134,41 @@ class SkillRegistry:
     def get_skill(self, name: str) -> SkillMetadata | None:
         return self._skills.get(name)
 
+    def search_tools(self, query: str, limit: int = 5) -> list[dict]:
+        """Search registered tools by keyword overlap on name + description.
+
+        Returns list of dicts with keys: name, description, category.
+        """
+        if not query:
+            return []
+
+        from app.skills.router import TOOL_CATEGORIES
+
+        # Build reverse map: tool_name -> category
+        tool_to_cat: dict[str, str] = {}
+        for cat, names in TOOL_CATEGORIES.items():
+            for name in names:
+                tool_to_cat[name] = cat
+
+        tokens = set(query.lower().split())
+        scored: list[tuple[float, dict]] = []
+        for tool in self._tools.values():
+            haystack = f"{tool.name} {tool.description}".lower()
+            hits = sum(1 for t in tokens if t in haystack)
+            if hits > 0:
+                score = hits / len(tokens)
+                scored.append((
+                    score,
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "category": tool_to_cat.get(tool.name, ""),
+                    },
+                ))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in scored[:limit]]
+
     def get_tools_for_skill(self, skill_name: str) -> list[ToolDefinition]:
         return [t for t in self._tools.values() if t.skill_name == skill_name]
 

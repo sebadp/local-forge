@@ -114,6 +114,15 @@ class Repository:
         row = await cursor.fetchone()
         return row[0]  # type: ignore[index]
 
+    async def count_messages_since(self, since_iso: str) -> int:
+        """Count messages across all conversations created after a given ISO timestamp."""
+        cursor = await self._conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE created_at > ?",
+            (since_iso,),
+        )
+        row = await cursor.fetchone()
+        return row[0]  # type: ignore[index]
+
     async def is_duplicate(self, wa_message_id: str) -> bool:
         cursor = await self._conn.execute(
             "SELECT 1 FROM messages WHERE wa_message_id = ?",

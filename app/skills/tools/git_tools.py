@@ -255,3 +255,97 @@ def register(registry: SkillRegistry, settings: Settings | None = None) -> None:
         handler=git_create_pr,
         skill_name="git",
     )
+
+    # --- Undo / rollback tools (Plan 58) ---
+
+    async def git_undo(scope: str = "file", file_path: str = "") -> str:
+        """Undo changes: restore a file or revert the last commit."""
+        if scope == "file":
+            if not file_path.strip():
+                return "Error: file_path is required when scope='file'."
+            clean = file_path.strip()
+            if clean.startswith("-"):
+                return f"Error: invalid file path '{clean}'."
+            code, out, err = await asyncio.to_thread(_run_git, "checkout", "--", clean)
+            if code != 0:
+                return f"Error restoring '{clean}': {err}"
+            return f"✅ Restored '{clean}' to last committed version."
+        elif scope == "commit":
+            code, out, err = await asyncio.to_thread(
+                _run_git, "revert", "HEAD", "--no-edit"
+            )
+            if code != 0:
+                return f"Error reverting last commit: {err}"
+            return f"✅ Reverted last commit.\n{out}"
+        else:
+            return f"Error: unknown scope '{scope}'. Use 'file' or 'commit'."
+
+    async def git_stash(action: str = "save", message: str = "") -> str:
+        """Manage the git stash: save, pop, or list stashed changes."""
+        if action == "save":
+            args: list[str] = ["stash", "push"]
+            if message.strip():
+                args += ["-m", message.strip()]
+            code, out, err = await asyncio.to_thread(_run_git, *args)
+            if code != 0:
+                return f"Error stashing: {err}"
+            return out or "✅ Changes stashed."
+        elif action == "pop":
+            code, out, err = await asyncio.to_thread(_run_git, "stash", "pop")
+            if code != 0:
+                return f"Error popping stash: {err}"
+            return out or "✅ Stash applied and removed."
+        elif action == "list":
+            code, out, err = await asyncio.to_thread(_run_git, "stash", "list")
+            if code != 0:
+                return f"Error listing stash: {err}"
+            return out or "(stash is empty)"
+        else:
+            return f"Error: unknown action '{action}'. Use 'save', 'pop', or 'list'."
+
+    registry.register_tool(
+        name="git_undo",
+        description=(
+            "Undo changes: restore a single file to its last committed state "
+            "(scope='file') or revert the last commit (scope='commit')."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "enum": ["file", "commit"],
+                    "description": "'file' to restore a file, 'commit' to revert last commit",
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the file to restore (required when scope='file')",
+                },
+            },
+            "required": ["scope"],
+        },
+        handler=git_undo,
+        skill_name="git",
+    )
+
+    registry.register_tool(
+        name="git_stash",
+        description="Manage the git stash: save current changes, pop the latest stash, or list all stashes.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["save", "pop", "list"],
+                    "description": "'save' to stash changes, 'pop' to restore, 'list' to show stashes",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Optional message for the stash (only used with action='save')",
+                },
+            },
+            "required": ["action"],
+        },
+        handler=git_stash,
+        skill_name="git",
+    )

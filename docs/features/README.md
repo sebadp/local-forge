@@ -55,6 +55,13 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Regression Eval Suite (seed dataset, classify/tools/e2e modes, CI-compatible) | [`49-regression_eval_suite.md`](49-regression_eval_suite.md) | Eval |
 | Deep Web Research Tool (composite search+fetch+chunk+embed+rank) | [`51-web_research.md`](51-web_research.md) | Exec Plan 51 |
 | Web Search Enhanced (depth param, auto-fetch, LLM extraction) | [`52-web_search_enhanced.md`](52-web_search_enhanced.md) | Exec Plan 52 |
+| Auto-Dream — Memory Consolidation Background | [`53-auto_dream.md`](53-auto_dream.md) | Exec Plan 53 |
+| MicroCompact & Lazy Tool Loading | [`54-microcompact_lazy_tools.md`](54-microcompact_lazy_tools.md) | Exec Plan 54 |
+| Session Memory — LLM Fact Extraction | [`55-session_memory.md`](55-session_memory.md) | Exec Plan 55 |
+| CodeGen Experience — Project Generation | [`56-codegen_experience.md`](56-codegen_experience.md) | Exec Plan 56 |
+| Subagent Forking & Planning Mode | [`57-subagent_planning.md`](57-subagent_planning.md) | Exec Plan 57 |
+| Claude Code Tooling & Code Mode | [`58-claude_code_tooling.md`](58-claude_code_tooling.md) | Exec Plan 58 |
+| Claude Code Refinements | [`59-claude_code_refinements.md`](59-claude_code_refinements.md) | Exec Plan 59 |
 
 ## Cómo crear un nuevo walkthrough
 

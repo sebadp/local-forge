@@ -41,6 +41,28 @@ _BLOCKED_CONFIG_FILES = {
     "audit_trail.jsonl",
 }
 
+_CODE_EXTENSIONS = {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php"}
+
+
+def _security_warning(content: str, path: str, suffix: str) -> str:
+    """Run code security check and return warning text (empty if clean)."""
+    if suffix.lower() not in _CODE_EXTENSIONS:
+        return ""
+    try:
+        from app.guardrails.checks import check_code_security
+
+        result = check_code_security(content, path)
+        if not result.passed:
+            lines = result.details.split("; ")
+            return (
+                "\n\n⚠️ **Security warning** — potentially unsafe patterns detected:\n"
+                + "\n".join(f"- {d}" for d in lines)
+                + "\n\nConsider reviewing and fixing these before proceeding."
+            )
+    except Exception:
+        pass
+    return ""
+
 
 def _is_safe_path(path: Path) -> bool:
     """Return True if path is within PROJECT_ROOT and not a sensitive file."""
@@ -113,35 +135,54 @@ def register(
 
         return await asyncio.to_thread(_collect)
 
-    async def read_source_file(path: str) -> str:
-        def _read() -> str:
-            target = (_PROJECT_ROOT / path).resolve()
+    def _read_file_impl(path: str, offset: int = 0, limit: int = 0) -> str:
+        """Unified file reading: full file or specific range.
 
-            if not _is_safe_path(target):
-                return f"Access denied: '{path}' is outside project root or is a sensitive file."
+        offset: 0-based line offset (0 = start of file).
+        limit: max lines to return (0 = no limit, read entire file).
+        """
+        target = (_PROJECT_ROOT / path).resolve()
 
-            if not target.exists():
-                return f"File not found: {path}"
+        if not _is_safe_path(target):
+            return f"Access denied: '{path}' is outside project root or is a sensitive file."
 
-            if not target.is_file():
-                return f"Not a file: {path}"
+        if not target.exists():
+            return f"File not found: {path}"
 
-            try:
-                content = target.read_text(encoding="utf-8", errors="replace")
-            except Exception as e:
-                return f"Error reading file: {e}"
+        if not target.is_file():
+            return f"Not a file: {path}"
 
-            # Add line numbers
-            lines = content.splitlines()
-            numbered = "\n".join(f"{i + 1:4d}  {line}" for i, line in enumerate(lines))
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            return f"Error reading file: {e}"
 
-            # Truncate if too long
-            if len(numbered) > 5000:
-                numbered = numbered[:5000] + f"\n... (truncated, {len(lines)} total lines)"
+        all_lines = content.splitlines()
+        total = len(all_lines)
 
+        if offset > 0 or limit > 0:
+            # Range mode
+            start = max(offset, 0)
+            if start >= total:
+                return f"Error: offset={start} exceeds file length ({total} lines)."
+            end = min(start + limit, total) if limit > 0 else total
+            if end - start > 500:
+                return f"Error: Range too large ({end - start} lines). Use limit <= 500."
+            selected = all_lines[start:end]
+            numbered = "\n".join(f"{start + i + 1:4d}  {line}" for i, line in enumerate(selected))
+            return f"{path} — Lines {start + 1}-{end} (of {total} total):\n{numbered}"
+        else:
+            # Full file mode
+            numbered = "\n".join(f"{i + 1:4d}  {line}" for i, line in enumerate(all_lines))
+            if len(numbered) > 12000:
+                numbered = numbered[:12000] + (
+                    f"\n... (truncated at 12KB, {total} total lines. "
+                    "Use offset and limit params for specific sections.)"
+                )
             return f"=== {path} ===\n{numbered}"
 
-        return await asyncio.to_thread(_read)
+    async def read_source_file(path: str, offset: int = 0, limit: int = 0) -> str:
+        return await asyncio.to_thread(_read_file_impl, path, offset, limit)
 
     async def list_source_files(directory: str = "") -> str:
         def _list() -> str:
@@ -334,11 +375,11 @@ def register(
 
         return await asyncio.to_thread(_read_logs)
 
-    async def write_source_file(path: str, content: str) -> str:
+    async def write_source_file(path: str, content: str, overwrite: bool = False) -> str:
         """Write content to a file within the project. Creates the file if it doesn't exist.
 
+        If the file already exists, requires overwrite=true to confirm replacement.
         Requires AGENT_WRITE_ENABLED=true in config.
-        Safety: Only allows writing within PROJECT_ROOT. Blocks sensitive files and binary extensions.
         """
         if not settings.agent_write_enabled:
             return "Error: Write operations are disabled. Set AGENT_WRITE_ENABLED=true in .env to enable."
@@ -355,10 +396,22 @@ def register(
             return f"Blocked: Cannot write binary or database file ({target.suffix})"
 
         def _write() -> str:
+            if target.exists() and not overwrite:
+                try:
+                    existing_lines = len(target.read_text(encoding="utf-8").splitlines())
+                except Exception:
+                    existing_lines = "?"
+                return (
+                    f"Warning: '{path}' already exists ({existing_lines} lines). "
+                    f"Call with overwrite=true to confirm replacement, "
+                    f"or use apply_patch for targeted edits."
+                )
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
-                return f"✅ Written {len(content)} chars to {path}"
+                msg = f"✅ Written {len(content)} chars to {path}"
+                msg += _security_warning(content, path, target.suffix)
+                return msg
             except Exception as e:
                 return f"Error writing file: {e}"
 
@@ -417,11 +470,12 @@ def register(
         logger.info("Agent preview_patch: %s (search=%d chars)", path, len(search))
         return await asyncio.to_thread(_preview)
 
-    async def apply_patch(path: str, search: str, replace: str) -> str:
+    async def apply_patch(
+        path: str, search: str, replace: str, replace_all: bool = False
+    ) -> str:
         """Apply a targeted text replacement in a source file.
 
-        Finds the FIRST occurrence of `search` in the file and replaces it with `replace`.
-        Safer than full file rewrites for small edits.
+        Requires a unique match unless replace_all=True.
         Requires AGENT_WRITE_ENABLED=true in config.
         """
         if not settings.agent_write_enabled:
@@ -448,7 +502,6 @@ def register(
                 return f"Error reading file: {e}"
 
             if search not in text:
-                # Give the LLM a useful hint to diagnose what went wrong
                 snippet = text[:300] + ("..." if len(text) > 300 else "")
                 return (
                     f"Error: Search string not found in '{path}'.\n"
@@ -456,13 +509,46 @@ def register(
                     f"File starts with:\n{snippet}"
                 )
 
+            count = text.count(search)
+
+            if replace_all:
+                new_text = text.replace(search, replace)
+                try:
+                    target.write_text(new_text, encoding="utf-8")
+                except Exception as e:
+                    return f"Error writing file: {e}"
+                msg = f"✅ Patched '{path}': replaced all {count} occurrence(s)."
+                msg += _security_warning(new_text, path, target.suffix)
+                return msg
+
+            if count > 1:
+                # Find line numbers to help LLM disambiguate
+                positions: list[str] = []
+                start = 0
+                for _i in range(min(count, 10)):
+                    idx = text.find(search, start)
+                    if idx == -1:
+                        break
+                    line_no = text[:idx].count("\n") + 1
+                    positions.append(str(line_no))
+                    start = idx + 1
+                return (
+                    f"Error: Search string found {count} times in '{path}' "
+                    f"(lines {', '.join(positions)}). "
+                    f"Provide more surrounding context to make the match unique, "
+                    f"or use replace_all=true to replace all occurrences."
+                )
+
+            # Unique match — safe to replace
             new_text = text.replace(search, replace, 1)
             try:
                 target.write_text(new_text, encoding="utf-8")
             except Exception as e:
                 return f"Error writing file: {e}"
 
-            return f"✅ Patched '{path}': replaced {len(search)} chars with {len(replace)} chars."
+            msg = f"✅ Patched '{path}': replaced {len(search)} chars with {len(replace)} chars."
+            msg += _security_warning(new_text, path, target.suffix)
+            return msg
 
         logger.info("Agent apply_patch: %s (search=%d chars)", path, len(search))
         return await asyncio.to_thread(_patch)
@@ -563,43 +649,16 @@ def register(
         return await asyncio.to_thread(_outline)
 
     async def read_lines(path: str, start: int, end: int) -> str:
-        """Read a specific line range from a source file (1-indexed, inclusive).
-
-        Max 200 lines per call. Use get_file_outline first to find line numbers.
-        """
-        target = (_PROJECT_ROOT / path).resolve()
-
-        if not _is_safe_path(target):
-            return f"Blocked: '{path}' is outside the project root."
-        if not target.exists():
-            return f"Error: File '{path}' does not exist."
-
+        """Read a specific line range (1-indexed, inclusive). Backward-compatible wrapper."""
         if start < 1:
             return "Error: start line must be >= 1."
         if end < start:
             return "Error: end line must be >= start line."
         if end - start > 199:
             return f"Error: Range too large ({end - start + 1} lines). Max 200 lines per call. Split into smaller ranges."
-
-        def _read() -> str:
-            try:
-                text = target.read_text(encoding="utf-8", errors="replace")
-            except Exception as e:
-                return f"Error reading file: {e}"
-
-            all_lines = text.splitlines()
-            total = len(all_lines)
-            actual_end = min(end, total)
-
-            if start > total:
-                return f"Error: start={start} exceeds file length ({total} lines)."
-
-            selected = all_lines[start - 1 : actual_end]
-            numbered = "\n".join(f"L{start + i}: {line}" for i, line in enumerate(selected))
-            header = f"{path} — Lines {start}-{actual_end} (of {total} total):\n"
-            return header + numbered
-
-        return await asyncio.to_thread(_read)
+        return await asyncio.to_thread(
+            _read_file_impl, path, offset=start - 1, limit=end - start + 1
+        )
 
     # Register all tools
 
@@ -613,13 +672,24 @@ def register(
 
     registry.register_tool(
         name="read_source_file",
-        description="Read the contents of a source file within the project (path relative to project root)",
+        description=(
+            "Read a source file within the project. Returns content with line numbers. "
+            "Use offset and limit to read specific sections of large files."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
                     "description": "File path relative to project root, e.g. 'app/main.py'",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Start reading from this line (0-based). Default: 0 (start of file).",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max lines to read. Default: 0 (entire file, truncated at 12KB).",
                 },
             },
             "required": ["path"],
@@ -716,8 +786,8 @@ def register(
         description=(
             "Write content to a source file within the project. "
             "Creates the file and any missing parent directories. "
-            "Requires AGENT_WRITE_ENABLED=true. "
-            "Use for NEW files. For edits to existing files, prefer apply_patch."
+            "Requires overwrite=true if the file already exists. "
+            "Requires AGENT_WRITE_ENABLED=true."
         ),
         parameters={
             "type": "object",
@@ -730,6 +800,10 @@ def register(
                     "type": "string",
                     "description": "Full content to write to the file",
                 },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "Set to true to overwrite an existing file. Default: false.",
+                },
             },
             "required": ["path", "content"],
         },
@@ -741,7 +815,7 @@ def register(
         name="apply_patch",
         description=(
             "Apply a targeted text replacement in an existing source file. "
-            "Finds the FIRST occurrence of `search` and replaces it with `replace`. "
+            "Search string must be unique unless replace_all=true. "
             "Safer than write_source_file for small edits. "
             "Requires AGENT_WRITE_ENABLED=true."
         ),
@@ -754,11 +828,15 @@ def register(
                 },
                 "search": {
                     "type": "string",
-                    "description": "Exact text to find in the file (must match exactly, including whitespace)",
+                    "description": "Exact text to find (must be unique unless replace_all=true)",
                 },
                 "replace": {
                     "type": "string",
                     "description": "Text to replace the found string with",
+                },
+                "replace_all": {
+                    "type": "boolean",
+                    "description": "If true, replace ALL occurrences. Default: false (requires unique match).",
                 },
             },
             "required": ["path", "search", "replace"],
@@ -820,8 +898,8 @@ def register(
     registry.register_tool(
         name="read_lines",
         description=(
-            "Read a specific range of lines from a source file (1-indexed, inclusive). "
-            "Max 200 lines per call. Use get_file_outline first to find which lines to read."
+            "(Alias) Read a line range (1-indexed, inclusive). "
+            "Prefer read_source_file with offset/limit. Max 200 lines per call."
         ),
         parameters={
             "type": "object",

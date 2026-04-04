@@ -81,6 +81,7 @@ async def test_agent_session_creates_trace_when_recorder_provided(
         patch("app.agent.loop.create_plan") as mock_create_plan,
         patch("app.agent.loop.synthesize", new_callable=AsyncMock, return_value="final answer"),
         patch("app.agent.loop.replan", new_callable=AsyncMock, return_value=None),
+        patch("app.agent.hitl.request_user_approval", new_callable=AsyncMock, return_value="sí"),
     ):
         mock_create_plan.return_value = AgentPlan(
             objective="test objective",
@@ -120,6 +121,7 @@ async def test_agent_session_no_trace_without_recorder(
         patch("app.agent.loop.create_plan") as mock_create_plan,
         patch("app.agent.loop.synthesize", new_callable=AsyncMock, return_value="final answer"),
         patch("app.agent.loop.replan", new_callable=AsyncMock, return_value=None),
+        patch("app.agent.hitl.request_user_approval", new_callable=AsyncMock, return_value="sí"),
     ):
         mock_create_plan.return_value = AgentPlan(
             objective="test objective no recorder",
@@ -165,6 +167,7 @@ async def test_planner_creates_span(
         patch("app.agent.loop.create_plan") as mock_create_plan,
         patch("app.agent.loop.synthesize", new_callable=AsyncMock, return_value="final answer"),
         patch("app.agent.loop.replan", new_callable=AsyncMock, return_value=None),
+        patch("app.agent.hitl.request_user_approval", new_callable=AsyncMock, return_value="sí"),
     ):
         mock_create_plan.return_value = AgentPlan(
             objective="test planner spans",
@@ -205,6 +208,7 @@ async def test_worker_creates_span_with_parent(
         patch("app.agent.loop.create_plan") as mock_create_plan,
         patch("app.agent.loop.synthesize", new_callable=AsyncMock, return_value="final answer"),
         patch("app.agent.loop.replan", new_callable=AsyncMock, return_value=None),
+        patch("app.agent.hitl.request_user_approval", new_callable=AsyncMock, return_value="sí"),
     ):
         mock_create_plan.return_value = AgentPlan(
             objective="test worker spans",

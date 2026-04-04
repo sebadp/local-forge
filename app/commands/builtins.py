@@ -81,6 +81,46 @@ async def cmd_agent(args: str, context: CommandContext) -> str:
     )
 
 
+async def cmd_code(args: str, context: CommandContext) -> str:
+    """Start a coding agent session with optimized tools and higher iteration limit."""
+    import asyncio
+
+    from app.agent.loop import create_session, get_active_session, run_agent_session
+
+    session = get_active_session(context.phone_number)
+    if session:
+        return "Ya hay una sesión activa. Usa /cancel antes de iniciar una nueva."
+
+    objective = args.strip()
+    if not objective:
+        return "Uso: /code <objetivo>\nEjemplo: /code fix the login validation bug"
+
+    new_session = create_session(context.phone_number, objective)
+    new_session.max_iterations = 20
+
+    task = asyncio.create_task(
+        run_agent_session(
+            session=new_session,
+            ollama_client=context.ollama_client,
+            skill_registry=context.skill_registry,
+            wa_client=context.wa_client,
+            mcp_manager=context.mcp_manager,
+            recorder=context.trace_recorder,
+            repository=context.repository,
+            pre_classified_categories=["code", "selfcode", "shell", "workspace"],
+        )
+    )
+    _bg_agent_tasks.add(task)
+    task.add_done_callback(_bg_agent_tasks.discard)
+
+    return (
+        f"💻 *Sesión de código iniciada*\n"
+        f"_Objetivo:_ {objective}\n\n"
+        "Herramientas activadas: glob, grep, read/write, shell, git.\n"
+        "Te informo mi progreso."
+    )
+
+
 async def cmd_agent_resume(args: str, context: CommandContext) -> str:
     """Resume the most recent agent session from disk."""
     import asyncio
@@ -858,6 +898,14 @@ def register_builtins(registry: CommandRegistry) -> None:
             description="Iniciar nueva sesión agéntica o ver estado actual",
             usage="/agent [objetivo]",
             handler=cmd_agent,
+        )
+    )
+    registry.register(
+        CommandSpec(
+            name="code",
+            description="Iniciar sesión de coding con tools optimizadas (glob, grep, git)",
+            usage="/code <objetivo>",
+            handler=cmd_code,
         )
     )
     registry.register(

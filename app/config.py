@@ -213,6 +213,18 @@ class Settings(BaseSettings):
     # Data Provenance (Plan 44)
     provenance_enabled: bool = True
 
+    # Auto-Dream: background memory consolidation (Plan 53)
+    dream_enabled: bool = True
+    dream_interval_hours: int = 24
+    dream_min_messages: int = 50
+
+    # Session Memory Extraction (Plan 55)
+    session_extract_enabled: bool = True
+    session_extract_interval: int = 10  # every N user messages
+
+    # Context window budget for auto-compaction (Plan 58)
+    context_window_tokens: int = 32768
+
     # Operational Automation (Plan 47)
     automation_enabled: bool = False
     automation_interval_minutes: int = 15

@@ -34,16 +34,25 @@ Antes de modificar un módulo, identificar su dominio. Las reglas de un dominio 
 | Skills registry | `app/skills/registry.py`, `skills/*/SKILL.md` | Frontmatter parsing con regex (sin PyYAML) |
 | MCP servers | `app/mcp/` | `_server_stacks` (por servidor), hot-reload |
 | Memoria semántica | `app/memory/`, `app/embeddings/indexer.py` | Sync guard, best-effort pattern |
+| Auto-Dream (consolidación) | `app/memory/dream.py`, `app/memory/consolidation_lock.py` | Best-effort, file-based lock, single LLM call con `think=False` |
+| MicroCompact (context opt) | `app/formatting/microcompact.py` | Determinístico, solo `COMPACTABLE_TOOLS`, no muta original |
+| Meta tools (discover) | `app/skills/tools/meta_tools.py` | `discover_tools` + `registry.search_tools()` keyword match |
+| Session Memory Extraction | `app/memory/session_extractor.py` | Background LLM extraction cada N msgs, `think=False`, best-effort |
+| Workspace Engine | `app/workspace/engine.py`, `app/workspace/templates.py`, `app/workspace/delivery.py` | Project workspaces, templates, delivery pipeline |
 | Conversación + summarizer | `app/conversation/` | Pre-compaction flush antes de borrar msgs |
 | Comandos `/` | `app/commands/` | `CommandContext` (no pasar `repository` directo) |
 | Base de datos | `app/database/` | sqlite-vec, serialización de vectores |
 | WhatsApp API | `app/whatsapp/` | HMAC validation, rate limiter |
 | LLM client | `app/llm/client.py` | `think: True` incompatible con tools en qwen3 |
-| Guardrails | `app/guardrails/` | Fail-open, single-shot remediation, langdetect umbral 30 chars |
+| Guardrails | `app/guardrails/` | Fail-open, single-shot remediation, langdetect umbral 30 chars, `check_code_security` (regex, Plan 60) |
 | Trazabilidad | `app/tracing/` | contextvars propagation, best-effort recorder |
 | Modo agéntico | `app/agent/` | loop.py (planner-orchestrator), planner.py, workers.py, models.py, hitl.py, task_memory.py, persistence.py |
+| Subagent Fork & Plan Mode | `app/agent/subagent.py`, `app/agent/planner.py` (replan), `app/agent/loop.py` (HITL review) | `should_use_subagent()` heuristic, `run_subagent()` mini-loop, `replan_with_feedback()`, plan approval via HITL |
+| Code navigation (Plan 58) | `app/skills/tools/glob_tools.py`, `app/skills/tools/grep_tools.py` | `glob_files` (pathlib.rglob), `grep_code` (rg/grep fallback), workspace-aware via WorkspaceEngine |
 | Debug tools | `app/skills/tools/debug_tools.py` | 5 tools: review_interactions, get_tool_output_full, get_interaction_context, write_debug_report, get_conversation_transcript |
 | Seguridad agéntica | `app/security/` | policy_engine.py (YAML regex), audit.py (hash chain SHA-256) |
+| Credential scrubbing (Plan 60) | `app/skills/tools/shell_tools.py` | `_scrubbed_env()` — subprocesos no heredan tokens/secrets |
+| Eval judge (Plan 60) | `app/eval/judge.py` | Multi-criteria LLM-as-judge: correctness, completeness, conciseness, tool_usage |
 
 ---
 
@@ -121,6 +130,7 @@ Los skills son la **unidad de extensión del sistema**. Mantienen el scope de lo
 | `news` | Noticias con preferencias guardadas | `search_news`, `add_news_preference` |
 | `scheduler` | Recordatorios y crons vía APScheduler | `schedule_task`, `list_schedules`, `create_cron`, `list_crons`, `delete_cron` |
 | `selfcode` | Auto-inspección del sistema | `get_version_info`, `get_runtime_config`, `search_source_code`, `get_file_outline`, `read_lines`, `write_source_file`, `apply_patch`, `preview_patch` |
+| `code` | Navegación y búsqueda de código (Plan 58) | `glob_files`, `grep_code` (+ selfcode, shell, git, workspace tools) |
 | `expand` | Auto-expansión: MCP + skills dinámicos | `search_mcp_registry`, `install_mcp_server`, `install_skill_from_url` |
 | `shell` | Ejecución de comandos (gated por `AGENT_WRITE_ENABLED`) | `run_command`, `manage_process` |
 | `workspace` | Multi-project workspace navigation | `list_workspaces`, `switch_workspace`, `get_workspace_info` |

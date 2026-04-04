@@ -37,6 +37,14 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | LLM Tool Awareness & Langfuse Full Observability — Prompt fixes + tracing inputs | [`50-llm_awareness_langfuse_observability_prd.md`](50-llm_awareness_langfuse_observability_prd.md) / [`50-llm_awareness_langfuse_observability_prp.md`](50-llm_awareness_langfuse_observability_prp.md) | 📋 Planificado |
 | Deep Web Research Tool — Composite search+fetch+chunk+embed+rank tool | [`51-web_research_tool_prd.md`](51-web_research_tool_prd.md) / [`51-web_research_tool_prp.md`](51-web_research_tool_prp.md) | ✅ Completado |
 | Web Search Enhancement — Smart auto-fetch + LLM extraction (depth param) | [`52-web_search_enhancement_prd.md`](52-web_search_enhancement_prd.md) / [`52-web_search_enhancement_prp.md`](52-web_search_enhancement_prp.md) | ✅ Completado |
+| Auto-Dream — Memory consolidation background (inspirado en Claude Code) | [`53-auto_dream_consolidation_prd.md`](53-auto_dream_consolidation_prd.md) / [`53-auto_dream_consolidation_prp.md`](53-auto_dream_consolidation_prp.md) | ✅ Completado |
+| MicroCompact & Lazy Tool Loading — Context window optimization | [`54-microcompact_context_management_prd.md`](54-microcompact_context_management_prd.md) / [`54-microcompact_context_management_prp.md`](54-microcompact_context_management_prp.md) | ✅ Completado |
+| Session Memory — LLM-powered fact extraction continua | [`55-session_memory_extraction_prd.md`](55-session_memory_extraction_prd.md) / [`55-session_memory_extraction_prp.md`](55-session_memory_extraction_prp.md) | ✅ Completado |
+| CodeGen Experience — Generación de proyectos y apps desde WhatsApp | [`56-codegen_experience_prd.md`](56-codegen_experience_prd.md) / [`56-codegen_experience_prp.md`](56-codegen_experience_prp.md) | ✅ Completado |
+| Subagent Forking & Planning Mode — Workers paralelos, fork, plan review | [`57-subagent_fork_planning_prd.md`](57-subagent_fork_planning_prd.md) / [`57-subagent_fork_planning_prp.md`](57-subagent_fork_planning_prp.md) | ✅ Completado |
+| Claude Code Tooling & Code Mode — glob, grep, /code, budget compaction, git undo | [`58-claude_code_tooling_prd.md`](58-claude_code_tooling_prd.md) / [`58-claude_code_tooling_prp.md`](58-claude_code_tooling_prp.md) | ✅ Completado |
+| Claude Code Refinements — Edit UX, tool consolidation, Plan 58 fixes | [`59-claude_code_refinements_prd.md`](59-claude_code_refinements_prd.md) / [`59-claude_code_refinements_prp.md`](59-claude_code_refinements_prp.md) | ✅ Completado |
+| Eval & Security Hardening — Multi-criteria judge, code security patterns, credential scrubbing | [`60-eval_security_hardening_prd.md`](60-eval_security_hardening_prd.md) / [`60-eval_security_hardening_prp.md`](60-eval_security_hardening_prp.md) | ✅ Completado |
 
 ## Convenciones
 

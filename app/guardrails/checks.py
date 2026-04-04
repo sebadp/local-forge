@@ -284,3 +284,48 @@ async def check_hallucination(user_text: str, reply: str, ollama_client) -> Guar
             details=f"check error: {e}",
             latency_ms=latency_ms,
         )
+
+
+# --- Code security pattern detection (Plan 60) ---
+
+_CODE_SECURITY_PATTERNS: list[tuple[re.Pattern, str, str]] = [
+    (re.compile(r"\beval\s*\("), "eval()", "Use ast.literal_eval() or a parser"),
+    (re.compile(r"\bexec\s*\("), "exec()", "Avoid dynamic code execution"),
+    (re.compile(r"\bos\.system\s*\("), "os.system()", "Use subprocess.run() with shell=False"),
+    (re.compile(r"\bos\.popen\s*\("), "os.popen()", "Use subprocess.run() with shell=False"),
+    (
+        re.compile(r"subprocess\.call\s*\([^)]*shell\s*=\s*True"),
+        "subprocess(shell=True)",
+        "Use shell=False with explicit args list",
+    ),
+    (re.compile(r"\bpickle\.loads?\s*\("), "pickle.load()", "Use json or a safe serializer"),
+    (
+        re.compile(r"\byaml\.load\s*\([^)]*\)(?!.*Loader)"),
+        "yaml.load() without Loader",
+        "Use yaml.safe_load()",
+    ),
+    (re.compile(r"dangerouslySetInnerHTML"), "dangerouslySetInnerHTML", "Sanitize HTML input first"),
+    (re.compile(r"\.innerHTML\s*="), ".innerHTML =", "Use textContent or a sanitizer"),
+    (re.compile(r"\bdocument\.write\s*\("), "document.write()", "Use DOM manipulation instead"),
+    (re.compile(r"\bnew\s+Function\s*\("), "new Function()", "Avoid dynamic code construction"),
+]
+
+
+def check_code_security(content: str, file_path: str = "") -> GuardrailResult:
+    """Scan written content for dangerous code patterns. Deterministic, no LLM."""
+    start = time.monotonic()
+    findings: list[str] = []
+
+    for pattern, name, recommendation in _CODE_SECURITY_PATTERNS:
+        for match in list(pattern.finditer(content))[:3]:
+            line_no = content[: match.start()].count("\n") + 1
+            findings.append(f"{name} (line {line_no}): {recommendation}")
+
+    passed = len(findings) == 0
+    latency_ms = (time.monotonic() - start) * 1000
+    return GuardrailResult(
+        passed=passed,
+        check_name="code_security",
+        details="; ".join(findings) if findings else "",
+        latency_ms=latency_ms,
+    )

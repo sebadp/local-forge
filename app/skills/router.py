@@ -121,7 +121,10 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
     ],
     "conversation": ["get_recent_messages", "get_conversation_transcript"],
     "shell": ["run_command", "manage_process"],
-    "workspace": ["list_workspaces", "switch_workspace", "get_workspace_info"],
+    "workspace": [
+        "list_workspaces", "switch_workspace", "get_workspace_info",
+        "create_workspace", "scaffold_project", "list_project_templates", "deliver_project",
+    ],
     "documentation": [
         "create_feature_docs",
         "update_architecture_rules",
@@ -129,6 +132,29 @@ TOOL_CATEGORIES: dict[str, list[str]] = {
     ],
     "provenance": ["trace_data_origin", "get_entity_history"],
     "automation": ["list_automation_rules", "toggle_automation_rule", "get_automation_log"],
+    "code": [
+        "glob_files",
+        "grep_code",
+        "read_source_file",
+        "read_lines",
+        "get_file_outline",
+        "search_source_code",
+        "list_source_files",
+        "write_source_file",
+        "apply_patch",
+        "preview_patch",
+        "run_command",
+        "manage_process",
+        "git_status",
+        "git_diff",
+        "git_create_branch",
+        "git_commit",
+        "git_push",
+        "git_create_pr",
+        "git_undo",
+        "git_stash",
+    ],
+    "meta": ["discover_tools"],
 }
 
 DEFAULT_CATEGORIES = ["time", "math", "weather", "search", "documentation"]
@@ -150,7 +176,7 @@ WORKER_TOOL_SETS: dict[str, list[str]] = {
         "debugging",
     ],
     "analyzer": ["github", "search", "evaluation", "selfcode", "debugging", "news"],
-    "coder": ["selfcode", "shell", "github"],
+    "coder": ["code", "selfcode", "shell", "workspace"],
     "reporter": ["evaluation", "notes", "debugging"],
     "general": [
         "search",
@@ -225,6 +251,14 @@ _CLASSIFIER_PROMPT_TEMPLATE = (
     # automation
     '"show automation rules" → automation\n'
     '"disable the guardrail alert" → automation\n'
+    # code
+    '"fix the login bug" → code\n'
+    '"refactorizá el módulo de auth" → code\n'
+    '"crea un endpoint /users con paginación" → code\n'
+    '"busca donde se define validate_email" → code\n'
+    '"encuentra todos los archivos .py que importan httpx" → code\n'
+    '"hacé un commit con los cambios" → code\n'
+    '"deshacé los cambios en main.py" → code\n'
     # none (general chat, greetings, knowledge questions without tools)
     '"tell me a joke" → none\n'
     '"hola, como estas?" → none\n'

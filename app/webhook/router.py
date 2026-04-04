@@ -126,6 +126,42 @@ async def wait_for_in_flight(timeout: float = 30.0) -> None:
         logger.warning("%d tasks still running after timeout", len(pending))
 
 
+async def _run_session_extraction(
+    phone: str,
+    repository: object,
+    ollama_client: object,
+    daily_log: object,
+    memory_file: object,
+) -> None:
+    """Background task: extract facts from recent messages via LLM."""
+    try:
+        from app.memory.session_extractor import extract_session_facts
+        from app.tracing.context import TraceContext
+
+        recent = await repository.get_recent_messages(phone, limit=20)  # type: ignore[attr-defined]
+        if not recent:
+            return
+
+        from app.models import ChatMessage
+
+        msgs = [ChatMessage(role=m["role"], content=m["content"]) for m in recent if m.get("content")]
+
+        memories = await repository.list_memories()  # type: ignore[attr-defined]
+        existing = [m.content for m in memories]
+
+        async with TraceContext("session_extraction"):
+            await extract_session_facts(
+                messages=msgs,
+                existing_memories=existing,
+                repository=repository,  # type: ignore[arg-type]
+                ollama_client=ollama_client,  # type: ignore[arg-type]
+                daily_log=daily_log,  # type: ignore[arg-type]
+                memory_file=memory_file,  # type: ignore[arg-type]
+            )
+    except Exception:
+        logger.exception("session_extraction.failed")
+
+
 @router.get("/webhook")
 async def verify_webhook(
     request: Request,
@@ -1770,6 +1806,19 @@ async def _handle_message(
                     )
                 )
             )
+
+        # Session memory extraction: every N messages, extract facts via LLM (background)
+        if settings.session_extract_enabled:
+            from app.memory.session_extractor import should_extract
+
+            if should_extract(msg.user_id, interval=settings.session_extract_interval):
+                _track_task(
+                    asyncio.create_task(
+                        _run_session_extraction(
+                            msg.user_id, repository, ollama_client, daily_log, memory_file
+                        )
+                    )
+                )
 
         # Summarize in background if needed
         _track_task(

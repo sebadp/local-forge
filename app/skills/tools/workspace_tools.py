@@ -1,227 +1,150 @@
-"""workspace_tools.py — Multi-project workspace management.
+"""workspace_tools.py — Multi-project workspace management + codegen.
 
-Allows the agent to switch between different project directories at runtime,
-without requiring a container restart or config change.
+Provides tools for creating, switching, and managing project workspaces,
+scaffolding from templates, and delivering projects (GitHub push, ZIP).
 
 Requires PROJECTS_ROOT to be set in .env to enable multi-project features.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
-
-logger = logging.getLogger(__name__)
-
-# Mutable project root — shared with selfcode_tools and shell_tools via set_project_root()
-_current_project_root: Path | None = None
-_original_project_root: Path = Path(__file__).resolve().parents[3]
-_projects_root: Path | None = None
-
-
-def init_workspace(projects_root: str) -> None:
-    """Initialize workspace tool with the configured projects_root directory."""
-    global _projects_root, _current_project_root
-    if projects_root:
-        _projects_root = Path(projects_root).expanduser().resolve()
-    _current_project_root = _original_project_root
-
-
-def get_current_root() -> Path:
-    """Return the active project root (used by shell and selfcode tools)."""
-    return _current_project_root or _original_project_root
-
-
-def _safe_project_name(name: str) -> bool:
-    """Validate that a project name is safe (no path traversal)."""
-    if not name:
-        return False
-    if "/" in name or "\\" in name or ".." in name:
-        return False
-    # Must resolve to a direct child of _projects_root
-    return True
-
-
-def _git_branch_sync(path: Path) -> str:
-    """Blocking helper — always call via asyncio.to_thread."""
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return result.stdout.strip() if result.returncode == 0 else "N/A"
-    except Exception:
-        return "N/A"
-
-
-async def _git_branch(path: Path) -> str:
-    return await asyncio.to_thread(_git_branch_sync, path)
-
-
-def _count_py_files(path: Path) -> int:
-    try:
-        return sum(1 for p in path.rglob("*.py") if ".git" not in p.parts)
-    except Exception:
-        return 0
-
-
-async def list_workspaces() -> str:
-    """List all available project workspaces in the configured projects_root directory."""
-    if not _projects_root:
-        return (
-            "Error: PROJECTS_ROOT is not configured. "
-            "Set PROJECTS_ROOT=/path/to/projects in your .env to enable multi-project workspace."
-        )
-
-    if not _projects_root.exists():
-        return f"Error: projects_root '{_projects_root}' does not exist."
-
-    projects = [
-        d for d in sorted(_projects_root.iterdir()) if d.is_dir() and not d.name.startswith(".")
-    ]
-
-    if not projects:
-        return f"No projects found in {_projects_root}"
-
-    current = _current_project_root or _original_project_root
-    lines = [f"**Workspaces** (root: `{_projects_root}`):\n"]
-    for proj in projects:
-        active = " ← active" if proj.resolve() == current.resolve() else ""
-        branch = await _git_branch(proj)
-        py_count = _count_py_files(proj)
-        lines.append(f"• `{proj.name}/`  [git: {branch} | {py_count} .py files]{active}")
-
-    return "\n".join(lines)
-
-
-async def switch_workspace(name: str) -> str:
-    """Switch the active project to a named workspace under projects_root.
-
-    The name must be a direct subdirectory of projects_root. No path traversal allowed.
-    """
-    global _current_project_root
-
-    if not _projects_root:
-        return "Error: PROJECTS_ROOT is not configured."
-
-    if not _safe_project_name(name):
-        return f"Error: Invalid project name '{name}'. Use a simple directory name without path separators."
-
-    target = (_projects_root / name).resolve()
-
-    # Security: must be a direct child of projects_root
-    try:
-        target.relative_to(_projects_root)
-    except ValueError:
-        return f"Error: '{name}' is outside the projects root — path traversal not allowed."
-
-    if not target.exists() or not target.is_dir():
-        return f"Error: Project '{name}' not found in {_projects_root}."
-
-    _current_project_root = target
-
-    # Propagate to selfcode_tools and shell_tools if they expose set_project_root / set_cwd
-    try:
-        import app.skills.tools.selfcode_tools as sc
-
-        if hasattr(sc, "_PROJECT_ROOT"):
-            sc._PROJECT_ROOT = target  # type: ignore[attr-defined]
-    except Exception:
-        pass
-
-    try:
-        import app.skills.tools.shell_tools as sh
-
-        if hasattr(sh, "_PROJECT_ROOT"):
-            sh._PROJECT_ROOT = target  # type: ignore[attr-defined]
-    except Exception:
-        pass
-
-    branch = await _git_branch(target)
-    py_count = _count_py_files(target)
-    logger.info("Switched workspace to '%s' (%s)", name, target)
-
-    return (
-        f"\u2705 Workspace cambiado a `{name}`\n"
-        f"Path: `{target}`\n"
-        f"Branch: {branch} | {py_count} archivos .py"
-    )
-
-
-async def get_workspace_info() -> str:
-    """Return information about the currently active workspace."""
-    current = _current_project_root or _original_project_root
-    name = current.name
-
-    branch = await _git_branch(current)
-    py_count = _count_py_files(current)
-
-    # Recent commits
-    def _git_log_sync() -> str:
-        import subprocess
-
-        try:
-            result = subprocess.run(
-                ["git", "log", "--oneline", "-5"],
-                cwd=current,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return result.stdout.strip() if result.returncode == 0 else "N/A"
-        except Exception:
-            return "N/A"
-
-    recent = await asyncio.to_thread(_git_log_sync)
-
-    lines = [
-        f"**Workspace activo**: `{name}`",
-        f"**Path**: `{current}`",
-        f"**Branch**: {branch}",
-        f"**Archivos .py**: {py_count}",
-        f"\n**Últimos commits:**\n```\n{recent}\n```",
-    ]
-    return "\n".join(lines)
-
 
 if TYPE_CHECKING:
     from app.skills.registry import SkillRegistry
 
+logger = logging.getLogger(__name__)
+
+# Module-level engine reference — set during registration
+_engine = None
+
 
 def register(registry: SkillRegistry, projects_root: str = "") -> None:
-    """Register workspace tools. projects_root from settings."""
-    init_workspace(projects_root)
+    """Register workspace and codegen tools."""
+    from app.workspace.engine import WorkspaceEngine
 
+    global _engine
+    _engine = WorkspaceEngine(projects_root)
+
+    async def list_workspaces() -> str:
+        """List all available project workspaces."""
+        if not _engine.projects_root:
+            return (
+                "Error: PROJECTS_ROOT is not configured. "
+                "Set PROJECTS_ROOT=/path/to/projects in your .env."
+            )
+        if not _engine.projects_root.exists():
+            return f"Error: projects_root '{_engine.projects_root}' does not exist."
+
+        workspaces = _engine.list_workspaces()
+        if not workspaces:
+            return f"No projects found in {_engine.projects_root}"
+
+        lines = [f"**Workspaces** (root: `{_engine.projects_root}`):"]
+        for ws in workspaces:
+            lines.append(f"- `{ws['name']}/`")
+        return "\n".join(lines)
+
+    async def switch_workspace(name: str) -> str:
+        """Switch the active workspace by name."""
+        try:
+            path = _engine.set_active("", name)
+            return f"Workspace switched to `{name}` at `{path}`"
+        except Exception as e:
+            return f"Error: {e}"
+
+    async def get_workspace_info() -> str:
+        """Get info about the currently active workspace."""
+        root = _engine.get_active_root()
+        info = await _engine.get_workspace_info(root.name)
+        if "error" in info:
+            return info["error"]
+        lines = [
+            f"**Workspace**: `{info['name']}`",
+            f"**Path**: `{info['path']}`",
+            f"**Branch**: {info.get('branch', 'N/A')}",
+            f"**Python files**: {info.get('py_files', 0)}",
+        ]
+        return "\n".join(lines)
+
+    async def create_workspace(name: str) -> str:
+        """Create a new empty project workspace with git init."""
+        try:
+            path = _engine.create_workspace(name)
+            return f"Workspace `{name}` created at `{path}`"
+        except Exception as e:
+            return f"Error: {e}"
+
+    async def scaffold_project(name: str, template: str, description: str = "") -> str:
+        """Create a new workspace from a template (html-static, python-fastapi, react-vite, nextjs)."""
+        from app.workspace.templates import scaffold
+
+        try:
+            path, files = scaffold(_engine, name, template, description=description)
+            file_list = "\n".join(f"  - {f}" for f in files)
+            return f"Project `{name}` created from `{template}` at `{path}`\n\nFiles:\n{file_list}"
+        except Exception as e:
+            return f"Error: {e}"
+
+    async def list_project_templates() -> str:
+        """List available project templates for scaffolding."""
+        from app.workspace.templates import list_templates
+
+        templates = list_templates()
+        lines = ["**Available templates:**"]
+        for t in templates:
+            files = ", ".join(t["files"][:5])
+            if len(t["files"]) > 5:
+                files += f", ... ({len(t['files'])} total)"
+            lines.append(f"- **{t['name']}**: {t['description']}")
+            lines.append(f"  Files: {files}")
+        return "\n".join(lines)
+
+    async def deliver_project(method: str, name: str = "") -> str:
+        """Deliver a project: method is 'github', 'zip', or 'preview'."""
+        import os
+
+        root = _engine.get_active_root()
+        ws_name = name or root.name
+
+        if method == "github":
+            from app.workspace.delivery import push_to_github
+
+            token = os.getenv("GITHUB_TOKEN", "")
+            if not token:
+                return "Error: GITHUB_TOKEN not set. Cannot push to GitHub."
+            return await push_to_github(root, ws_name, token)
+
+        if method == "zip":
+            from app.workspace.delivery import create_zip
+
+            zip_path = await create_zip(root)
+            return f"ZIP created at `{zip_path}` ({zip_path.stat().st_size / 1024:.0f} KB)"
+
+        if method == "preview":
+            from app.workspace.delivery import serve_preview
+
+            url = await serve_preview(root)
+            return f"Preview server started: {url}"
+
+        return f"Error: Unknown delivery method '{method}'. Use 'github', 'zip', or 'preview'."
+
+    # Register all tools
     registry.register_tool(
         name="list_workspaces",
-        description=(
-            "List all available project workspaces. "
-            "Requires PROJECTS_ROOT to be configured in settings."
-        ),
+        description="List all available project workspaces in the configured projects_root directory.",
         parameters={"type": "object", "properties": {}},
         handler=list_workspaces,
         skill_name="workspace",
     )
     registry.register_tool(
         name="switch_workspace",
-        description=(
-            "Switch the active project workspace by name. "
-            "Use list_workspaces first to see available projects."
-        ),
+        description="Switch the active project workspace by name.",
         parameters={
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Project directory name (must be a direct child of projects_root).",
-                },
+                "name": {"type": "string", "description": "Project directory name."},
             },
             "required": ["name"],
         },
@@ -230,8 +153,61 @@ def register(registry: SkillRegistry, projects_root: str = "") -> None:
     )
     registry.register_tool(
         name="get_workspace_info",
-        description="Get information about the currently active workspace: path, git branch, file count, recent commits.",
+        description="Get info about the currently active workspace: path, git branch, file count.",
         parameters={"type": "object", "properties": {}},
         handler=get_workspace_info,
+        skill_name="workspace",
+    )
+    registry.register_tool(
+        name="create_workspace",
+        description="Create a new empty project workspace with git init.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Project name (alphanumeric, hyphens, underscores)."},
+            },
+            "required": ["name"],
+        },
+        handler=create_workspace,
+        skill_name="workspace",
+    )
+    registry.register_tool(
+        name="scaffold_project",
+        description=(
+            "Create a new project from a template. "
+            "Templates: html-static, python-fastapi, react-vite, nextjs. "
+            "Use list_project_templates to see details."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Project name."},
+                "template": {"type": "string", "description": "Template name (e.g. html-static, python-fastapi)."},
+                "description": {"type": "string", "description": "Brief project description."},
+            },
+            "required": ["name", "template"],
+        },
+        handler=scaffold_project,
+        skill_name="workspace",
+    )
+    registry.register_tool(
+        name="list_project_templates",
+        description="List available project templates for scaffolding (html-static, python-fastapi, react-vite, nextjs).",
+        parameters={"type": "object", "properties": {}},
+        handler=list_project_templates,
+        skill_name="workspace",
+    )
+    registry.register_tool(
+        name="deliver_project",
+        description="Deliver the active project: push to GitHub ('github'), create ZIP ('zip'), or start preview server ('preview').",
+        parameters={
+            "type": "object",
+            "properties": {
+                "method": {"type": "string", "description": "'github', 'zip', or 'preview'."},
+                "name": {"type": "string", "description": "Optional repo/project name override."},
+            },
+            "required": ["method"],
+        },
+        handler=deliver_project,
         skill_name="workspace",
     )

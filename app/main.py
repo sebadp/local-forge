@@ -286,6 +286,64 @@ async def lifespan(app: FastAPI):
     # Also run once at startup to clean up pre-existing stale corrections
     _startup_cleanup_task = _asyncio.create_task(_cleanup_self_corrections())
 
+    # Auto-Dream: background memory consolidation (Plan 53)
+    if settings.dream_enabled:
+        from pathlib import Path as _Path
+
+        from app.memory.consolidation_lock import should_dream as _should_dream
+        from app.memory.dream import run_dream as _run_dream
+
+        _dream_data_dir = _Path(settings.memory_dir).parent  # data/
+        _dream_repo = repository
+        _dream_ollama = app.state.ollama_client
+        _dream_memory_file = memory_file
+        _dream_daily_log = daily_log
+        _dream_settings = settings
+
+        async def _dream_job() -> None:
+            try:
+                if not await _should_dream(
+                    _dream_data_dir,
+                    _dream_repo,
+                    interval_hours=_dream_settings.dream_interval_hours,
+                    min_messages=_dream_settings.dream_min_messages,
+                ):
+                    return
+                from app.tracing.context import TraceContext
+
+                async with TraceContext("dream_consolidation"):
+                    result = await _run_dream(
+                        _dream_repo,
+                        _dream_ollama,
+                        _dream_memory_file,
+                        _dream_daily_log,
+                        _dream_data_dir,
+                    )
+                if result.error:
+                    logger.warning("Auto-dream completed with error: %s", result.error)
+                else:
+                    logger.info(
+                        "Auto-dream completed: removed=%d, updated=%d, created=%d",
+                        result.removed,
+                        result.updated,
+                        result.created,
+                    )
+            except Exception:
+                logger.exception("Auto-dream job failed (non-critical)")
+
+        scheduler.add_job(
+            _dream_job,
+            trigger="interval",
+            hours=settings.dream_interval_hours,
+            id="auto_dream",
+            replace_existing=True,
+        )
+        logger.info(
+            "Auto-dream scheduled (interval=%dh, min_messages=%d)",
+            settings.dream_interval_hours,
+            settings.dream_min_messages,
+        )
+
     # Operational Automation (Plan 47): data-driven triggers
     if settings.automation_enabled:
         from app.automation.builtin_rules import seed_builtin_rules

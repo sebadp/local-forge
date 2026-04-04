@@ -76,6 +76,14 @@ RULES:
   Do NOT use read_source_file on files >200 lines — use the outline+read_lines pattern.
 - When ALL steps are done, write a concise summary of what was accomplished.
 
+PROJECT GENERATION: When the user asks to create a project, app, or website:
+1. Use list_project_templates to see available templates (html-static, python-fastapi, react-vite, nextjs)
+2. Use scaffold_project to create the project from a template
+3. Customize the generated files with write_source_file or apply_patch
+4. Use deliver_project to deliver the result (github, zip, or preview)
+
+{workspace_info}
+
 SCRATCHPAD: You can use <scratchpad>...</scratchpad> tags in your replies to persist notes between \
 rounds. Content inside scratchpad tags will be saved and re-injected in the next round. Use this \
 for: key findings, file paths discovered, decisions made, test results, partial progress. \
@@ -90,6 +98,25 @@ _PLAN_REMINDER = """\
 
 Continue executing the next pending [ ] step. Do not repeat steps already marked [x].
 """
+
+
+def _get_workspace_info_block() -> str:
+    """Build workspace info for agent system prompt."""
+    try:
+        from app.skills.tools.workspace_tools import _engine
+
+        if _engine and _engine.projects_root:
+            root = _engine.get_active_root()
+            workspaces = _engine.list_workspaces()
+            ws_names = ", ".join(w["name"] for w in workspaces[:10]) if workspaces else "(none)"
+            return (
+                f"WORKSPACE: Active workspace at `{root}`\n"
+                f"Available workspaces: {ws_names}\n"
+                f"Projects root: `{_engine.projects_root}`"
+            )
+    except Exception:
+        pass
+    return ""
 
 
 def _register_session_tools(
@@ -404,114 +431,160 @@ async def _run_planner_session(
     session.plan = plan
     session.task_plan = plan.to_markdown()
 
-    try:
-        await wa_client.send_message(
-            session.phone_number,
-            f"📋 Plan creado: {len(plan.tasks)} pasos\n{plan.to_markdown()}",
+    # --- Phase 1.5: REVIEW — Let user review plan before execution ---
+    from app.agent.hitl import request_user_approval
+    from app.agent.planner import replan_with_feedback
+
+    approval = await request_user_approval(
+        session.phone_number,
+        f"📋 *Plan de ejecución ({len(plan.tasks)} pasos):*\n{plan.to_markdown()}\n\n"
+        "¿Procedo? (sí / modificar / cancelar)",
+        wa_client,
+        timeout=300,  # 5 min for plan review
+    )
+
+    lower = approval.lower().strip()
+    if lower in ("cancelar", "no", "cancel"):
+        session.status = AgentStatus.COMPLETED
+        return "❌ Sesión cancelada por el usuario."
+    elif lower.startswith("timeout"):
+        session.status = AgentStatus.COMPLETED
+        return "⏰ Timeout esperando aprobación del plan. Sesión cancelada."
+    elif lower not in ("sí", "si", "dale", "ok", "yes", "go", "procede", "adelante"):
+        # Treat as modification request
+        plan = await replan_with_feedback(
+            session.objective, plan, approval, ollama_client,
         )
-    except Exception:
-        pass  # Best-effort
+        session.plan = plan
+        session.task_plan = plan.to_markdown()
+        try:
+            await wa_client.send_message(
+                session.phone_number,
+                f"📋 *Plan actualizado:*\n{plan.to_markdown()}\n\n▶️ Ejecutando...",
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            await wa_client.send_message(session.phone_number, "▶️ Ejecutando plan...")
+        except Exception:
+            pass
 
     # --- Phase 2 + 3: EXECUTE + SYNTHESIZE loop ---
     max_cycles = session.max_iterations
     for cycle in range(max_cycles):
         session.iteration = cycle
 
-        # Execute pending tasks
-        task = plan.next_task()
-        while task is not None:
-            task.status = "in_progress"
+        # Execute ready tasks — run in parallel when multiple tasks have deps met
+        ready = plan.ready_tasks()
+        while ready:
+            for t in ready:
+                t.status = "in_progress"
             session.task_plan = plan.to_markdown()
-            logger.info(
-                "Agent session %s: executing task #%s [%s]: %s",
-                session.session_id,
-                task.id,
-                task.worker_type,
-                task.description[:80],
-            )
 
-            trace = get_current_trace()
-            if trace:
-                async with trace.span(f"worker:task_{task.id}", kind="span") as worker_span:
-                    worker_span.set_input(
-                        {
-                            "description": task.description,
-                            "worker_type": task.worker_type,
-                        }
-                    )
+            async def _execute_one(task, _plan=plan):
+                """Execute a single worker task with tracing."""
+                logger.info(
+                    "Agent session %s: executing task #%s [%s]: %s",
+                    session.session_id,
+                    task.id,
+                    task.worker_type,
+                    task.description[:80],
+                )
+                trace = get_current_trace()
+                if trace:
+                    async with trace.span(f"worker:task_{task.id}", kind="span") as worker_span:
+                        worker_span.set_input(
+                            {
+                                "description": task.description,
+                                "worker_type": task.worker_type,
+                            }
+                        )
+                        try:
+                            result = await execute_worker(
+                                task=task,
+                                objective=_plan.objective,
+                                ollama_client=ollama_client,
+                                skill_registry=session_registry,
+                                mcp_manager=mcp_manager,
+                                max_tools=_TOOLS_PER_ROUND,
+                                hitl_callback=hitl_callback,
+                                parent_span_id=worker_span.span_id,
+                                plan=_plan,
+                            )
+                            task.result = result
+                            task.status = "failed" if "(no data found" in result else "done"
+                            worker_span.set_output({"result": result[:500], "status": task.status})
+                        except Exception as e:
+                            logger.exception("Worker task #%s failed", task.id)
+                            task.status = "failed"
+                            task.result = f"Error: {e}"
+                            worker_span._status = "failed"
+                            worker_span.set_output({"error": str(e), "status": task.status})
+                else:
                     try:
                         result = await execute_worker(
                             task=task,
-                            objective=plan.objective,
+                            objective=_plan.objective,
                             ollama_client=ollama_client,
                             skill_registry=session_registry,
                             mcp_manager=mcp_manager,
                             max_tools=_TOOLS_PER_ROUND,
                             hitl_callback=hitl_callback,
-                            parent_span_id=worker_span.span_id,
-                            plan=plan,
+                            plan=_plan,
                         )
                         task.result = result
-                        if "(no data found" in result:
-                            task.status = "failed"
-                        else:
-                            task.status = "done"
-                        worker_span.set_output({"result": result[:500], "status": task.status})
+                        task.status = "failed" if "(no data found" in result else "done"
                     except Exception as e:
                         logger.exception("Worker task #%s failed", task.id)
                         task.status = "failed"
                         task.result = f"Error: {e}"
-                        worker_span._status = "failed"
-                        worker_span.set_output({"error": str(e), "status": task.status})
+
+            if len(ready) > 1:
+                logger.info(
+                    "Agent session %s: running %d tasks in parallel: %s",
+                    session.session_id,
+                    len(ready),
+                    [t.id for t in ready],
+                )
+                await asyncio.gather(*[_execute_one(t) for t in ready])
             else:
-                try:
-                    result = await execute_worker(
-                        task=task,
-                        objective=plan.objective,
-                        ollama_client=ollama_client,
-                        skill_registry=session_registry,
-                        mcp_manager=mcp_manager,
-                        max_tools=_TOOLS_PER_ROUND,
-                        hitl_callback=hitl_callback,
-                        plan=plan,
-                    )
-                    task.result = result
-                    if "(no data found" in result:
-                        task.status = "failed"
-                    else:
-                        task.status = "done"
-                except Exception as e:
-                    logger.exception("Worker task #%s failed", task.id)
-                    task.status = "failed"
-                    task.result = f"Error: {e}"
+                await _execute_one(ready[0])
 
             session.task_plan = plan.to_markdown()
 
-            # Persist after each task
-            try:
-                round_data = {
-                    "iteration": cycle + 1,
-                    "task_id": task.id,
-                    "task_status": task.status,
-                    "task_plan": session.task_plan,
-                    "reply": task.result or "",
-                }
-                append_to_session(session.phone_number, session.session_id, round_data)
-            except Exception as e:
-                logger.error("Error saving session round: %s", e)
+            # Persist after each batch
+            for task in ready:
+                try:
+                    round_data = {
+                        "iteration": cycle + 1,
+                        "task_id": task.id,
+                        "task_status": task.status,
+                        "task_plan": session.task_plan,
+                        "reply": task.result or "",
+                    }
+                    append_to_session(session.phone_number, session.session_id, round_data)
+                except Exception as e:
+                    logger.error("Error saving session round: %s", e)
 
             # Progress update
             done_count = plan.success_count()
-            status_icon = "✅" if task.status == "done" else "❌"
+            completed_ids = [t.id for t in ready if t.status == "done"]
+            failed_ids = [t.id for t in ready if t.status == "failed"]
+            status_parts = []
+            if completed_ids:
+                status_parts.append(f"✅ #{','.join(str(i) for i in completed_ids)} done")
+            if failed_ids:
+                status_parts.append(f"❌ #{','.join(str(i) for i in failed_ids)} failed")
             try:
                 await wa_client.send_message(
                     session.phone_number,
-                    f"{status_icon} Task #{task.id} {'done' if task.status == 'done' else 'failed'} ({done_count}/{len(plan.tasks)})",
+                    f"{' | '.join(status_parts)} ({done_count}/{len(plan.tasks)})",
                 )
             except Exception:
                 pass
 
-            task = plan.next_task()
+            ready = plan.ready_tasks()
 
         # All tasks executed (or failed) — check if we should replan
         if plan.all_done() and not plan.has_failures():
@@ -591,6 +664,7 @@ async def _run_reactive_session(
     mcp_manager: McpManager | None,
     hitl_callback,
     messages: list[ChatMessage],
+    pre_classified_categories: list[str] | None = None,
 ) -> str:
     """Run the legacy reactive agent loop (fallback).
 
@@ -643,6 +717,7 @@ async def _run_reactive_session(
                     max_tools=_TOOLS_PER_ROUND,
                     hitl_callback=hitl_callback,
                     parent_span_id=round_span.span_id,
+                    pre_classified_categories=pre_classified_categories,
                 )
                 round_span.set_output({"reply_preview": reply[:200]})
         else:
@@ -653,6 +728,7 @@ async def _run_reactive_session(
                 mcp_manager=mcp_manager,
                 max_tools=_TOOLS_PER_ROUND,
                 hitl_callback=hitl_callback,
+                pre_classified_categories=pre_classified_categories,
             )
 
         # Extract and persist scratchpad before appending the clean reply
@@ -727,6 +803,7 @@ async def run_agent_session(
     use_planner: bool = True,
     recorder=None,
     repository=None,
+    pre_classified_categories: list[str] | None = None,
 ) -> None:
     """Run a full agentic session in the background.
 
@@ -766,6 +843,7 @@ async def run_agent_session(
                 mcp_manager=mcp_manager,
                 use_planner=use_planner,
                 repository=repository,
+                pre_classified_categories=pre_classified_categories,
             )
     else:
         await _run_agent_body(
@@ -776,6 +854,7 @@ async def run_agent_session(
             mcp_manager=mcp_manager,
             use_planner=use_planner,
             repository=repository,
+            pre_classified_categories=pre_classified_categories,
         )
 
 
@@ -843,6 +922,7 @@ async def _run_agent_body(
     mcp_manager: McpManager | None,
     use_planner: bool,
     repository=None,
+    pre_classified_categories: list[str] | None = None,
 ) -> None:
     """Inner implementation of run_agent_session. Run inside a TraceContext if tracing enabled."""
     try:
@@ -913,7 +993,10 @@ async def _run_agent_body(
                         except Exception:
                             pass
                     # Fallback to reactive loop
-                    system_content = _AGENT_SYSTEM_PROMPT.format(objective=session.objective)
+                    system_content = _AGENT_SYSTEM_PROMPT.format(
+                        objective=session.objective,
+                        workspace_info=_get_workspace_info_block(),
+                    )
                     system_content = _load_bootstrap_context(system_content)
                     messages: list[ChatMessage] = [
                         ChatMessage(role="system", content=system_content),
@@ -927,9 +1010,13 @@ async def _run_agent_body(
                         mcp_manager=mcp_manager,
                         hitl_callback=hitl_callback,
                         messages=messages,
+                        pre_classified_categories=pre_classified_categories,
                     )
         else:
-            system_content = _AGENT_SYSTEM_PROMPT.format(objective=session.objective)
+            system_content = _AGENT_SYSTEM_PROMPT.format(
+                        objective=session.objective,
+                        workspace_info=_get_workspace_info_block(),
+                    )
             system_content = _load_bootstrap_context(system_content)
             messages = [
                 ChatMessage(role="system", content=system_content),
@@ -943,6 +1030,7 @@ async def _run_agent_body(
                 mcp_manager=mcp_manager,
                 hitl_callback=hitl_callback,
                 messages=messages,
+                pre_classified_categories=pre_classified_categories,
             )
 
         # --- Session ended ---

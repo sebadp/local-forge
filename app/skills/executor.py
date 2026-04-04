@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.formatting.compaction import compact_tool_output
+from app.formatting.microcompact import microcompact_messages
 from app.llm.client import OllamaClient
 from app.models import ChatMessage
 from app.security.audit import AuditTrail
@@ -406,6 +407,13 @@ async def execute_tool_loop(
             logger.debug("Injected user_facts into tool loop: %s", list(user_facts.keys()))
 
     for iteration in range(MAX_TOOL_ITERATIONS):
+        # Budget-based compaction: if context approaches the model's limit,
+        # aggressively compact old tool results to prevent context overflow.
+        import os as _os
+
+        _ctx_tokens = int(_os.getenv("CONTEXT_WINDOW_TOKENS", "32768"))
+        _budget_compact(working_messages, iteration, context_window_tokens=_ctx_tokens)
+
         trace = get_current_trace()
         iteration_span_id: str | None = None
         if trace:
@@ -618,9 +626,12 @@ async def execute_tool_loop(
         # Append results in original call order
         working_messages.extend(tool_result_map[i] for i in sorted(tool_result_map))
 
-        # Tool result clearing: replace old (raw) tool results with compact placeholders
-        # to prevent context bloat on iterations 3+. Keep the last 2 rounds intact.
-        _clear_old_tool_results(working_messages, keep_last_n=2)
+        # MicroCompact: selectively clear old verbose tool results to free context.
+        # Only compacts known-verbose tools (web_search, read_source_file, etc.)
+        # from rounds that are >=2 iterations old.  Deterministic, no LLM call.
+        working_messages = microcompact_messages(
+            working_messages, max_age_rounds=2, current_round=iteration,
+        )
 
     # Safety: exceeded max iterations, force a text response without tools
     logger.warning("Max tool iterations (%d) reached, forcing text response", MAX_TOOL_ITERATIONS)
@@ -637,6 +648,32 @@ async def execute_tool_loop(
     )
     response = await ollama_client.chat_with_tools(working_messages, tools=None)
     return response.content
+
+
+def _budget_compact(
+    working_messages: list[ChatMessage],
+    iteration: int,
+    context_window_tokens: int = 32768,
+) -> None:
+    """Trigger aggressive compaction when context approaches the model's limit."""
+    from app.context.token_estimator import estimate_tokens
+
+    total_text = "".join(m.content or "" for m in working_messages)
+    estimated = estimate_tokens(total_text)
+
+    budget = context_window_tokens
+
+    if estimated > int(budget * 0.8):
+        logger.warning(
+            "Budget compaction triggered: %d tokens estimated (%.0f%% of %d budget)",
+            estimated,
+            (estimated / budget) * 100,
+            budget,
+        )
+        working_messages[:] = microcompact_messages(
+            working_messages, max_age_rounds=1, current_round=iteration,
+        )
+        _clear_old_tool_results(working_messages, keep_last_n=1)
 
 
 def _clear_old_tool_results(messages: list[ChatMessage], keep_last_n: int = 2) -> None:

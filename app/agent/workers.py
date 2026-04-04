@@ -155,6 +155,44 @@ async def execute_worker(
     # Determine categories for this worker type
     categories = WORKER_TOOL_SETS.get(task.worker_type, WORKER_TOOL_SETS.get("general", []))
 
+    # Check if task is complex enough to warrant a subagent
+    from app.agent.subagent import should_use_subagent
+
+    if should_use_subagent(task.description, task.worker_type):
+        from app.agent.subagent import SubagentConfig, run_subagent
+
+        # Build context from dependency results
+        dep_context = ""
+        if task.depends_on and plan:
+            dep_lines = []
+            for dep_id in task.depends_on:
+                dep_task = next((t for t in plan.tasks if t.id == dep_id), None)
+                if dep_task and dep_task.result:
+                    dep_lines.append(f"Step #{dep_id}: {dep_task.result[:400]}")
+            if dep_lines:
+                dep_context = "Previous results:\n" + "\n".join(dep_lines)
+
+        # Collect tool names from categories
+        from app.skills.router import TOOL_CATEGORIES
+
+        tool_names = []
+        for cat in categories:
+            tool_names.extend(TOOL_CATEGORIES.get(cat, []))
+
+        config = SubagentConfig(
+            objective=task.description,
+            tool_names=tool_names,
+            context=dep_context,
+        )
+        logger.info("Elevating task #%s to subagent (complex task)", task.id)
+        return await run_subagent(
+            config=config,
+            ollama_client=ollama_client,
+            skill_registry=skill_registry,
+            mcp_manager=mcp_manager,
+            hitl_callback=hitl_callback,
+        )
+
     result = await execute_tool_loop(
         messages=messages,
         ollama_client=ollama_client,

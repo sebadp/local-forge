@@ -226,6 +226,7 @@ def register(
         if not entries:
             return "No dataset entries found. Build the dataset first with add_to_dataset()."
 
+        from app.eval.judge import judge_response
         from app.models import ChatMessage
 
         results = []
@@ -246,20 +247,34 @@ def register(
                 actual = str(resp).strip() if resp else ""
                 expected = entry["expected_output"]
 
-                # Step 2: LLM-as-judge — binary yes/no, think=False for determinism
-                judge_prompt = (
-                    f"Question: {entry['input_text'][:300]}\n"
-                    f"Expected answer: {expected[:300]}\n"
-                    f"Actual answer: {actual[:300]}\n\n"
-                    "Does the actual answer correctly and completely answer the question? "
-                    "Reply ONLY 'yes' or 'no'."
+                # Step 2: Multi-criteria LLM-as-judge
+                judge_result = await judge_response(
+                    question=entry["input_text"],
+                    expected=expected,
+                    actual=actual,
+                    ollama_client=ollama_client,
                 )
-                judge_resp = await ollama_client.chat(
-                    [ChatMessage(role="user", content=judge_prompt)],
-                    think=False,
-                )
-                passed = str(judge_resp).strip().lower().startswith("yes")
-                results.append({"entry_id": entry["id"], "passed": passed})
+                results.append({
+                    "entry_id": entry["id"],
+                    "passed": judge_result.passed,
+                    "scores": judge_result.to_dict(),
+                    "trace_id": entry.get("trace_id"),
+                })
+
+                # Record per-criterion scores to trace (best-effort)
+                trace_id = entry.get("trace_id")
+                if trace_id:
+                    for criterion in ("correctness", "completeness", "conciseness", "tool_usage"):
+                        try:
+                            await repository.save_trace_score(
+                                trace_id=trace_id,
+                                name=f"eval:{criterion}",
+                                value=getattr(judge_result, criterion),
+                                source="system",
+                                comment=judge_result.reasoning[:200],
+                            )
+                        except Exception:
+                            pass  # best-effort
             except Exception:
                 logger.exception("run_quick_eval inference failed for entry %s", entry["id"])
 
@@ -271,11 +286,28 @@ def register(
             f"*Quick eval results* ({len(results)} entries, category={category}{override_label})",
             f"Correct: {correct}/{len(results)} ({correct / len(results):.0%})",
             "",
-            "*Per entry:*",
         ]
+
+        # Aggregate scores by criterion
+        criteria = ("correctness", "completeness", "conciseness", "tool_usage")
+        avg_scores = {}
+        for criterion in criteria:
+            values = [r["scores"][criterion] for r in results]
+            if values:
+                avg_scores[criterion] = round(sum(values) / len(values), 2)
+
+        if avg_scores:
+            lines.append("*Scores by criterion:*")
+            for criterion, avg in avg_scores.items():
+                icon = "✅" if avg >= 0.7 else "⚠️" if avg >= 0.4 else "❌"
+                lines.append(f"  {icon} {criterion}: {avg}")
+            lines.append("")
+
+        lines.append("*Per entry:*")
         for r in results:
             icon = "✅" if r["passed"] else "❌"
-            lines.append(f"- entry #{r['entry_id']}: {icon}")
+            avg = r["scores"].get("average", 0)
+            lines.append(f"- entry #{r['entry_id']}: {icon} (avg={avg})")
         return "\n".join(lines)
 
     async def get_latency_stats(span_name: str = "all", days: int = 7) -> str:

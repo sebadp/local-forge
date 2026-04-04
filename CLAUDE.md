@@ -64,6 +64,7 @@ app/
     markdown_to_wa.py  # Markdown → WhatsApp
     splitter.py        # Split mensajes largos
     compaction.py      # JSON-aware compaction (3 niveles: JSON → LLM → truncate)
+    microcompact.py    # Selective clearing of old tool results (deterministic, no LLM)
   skills/              # Sistema de skills y tool calling
     models.py          # ToolDefinition, ToolCall, ToolResult, SkillMetadata
     loader.py          # Parser de SKILL.md (frontmatter con regex, sin PyYAML)
@@ -76,6 +77,8 @@ app/
       weather_tools.py
       notes_tools.py
       selfcode_tools.py
+      glob_tools.py    # glob_files (pathlib.rglob, Plan 58)
+      grep_tools.py    # grep_code (rg/grep fallback, Plan 58)
       expand_tools.py
       project_tools.py
   agent/               # Modo agéntico
@@ -83,6 +86,7 @@ app/
     models.py          # AgentSession, AgentStatus
     hitl.py            # Human-in-the-loop (request_user_approval)
     task_memory.py     # create_task_plan, update_task_status, get_task_plan
+    subagent.py        # SubagentConfig, should_use_subagent, run_subagent (mini tool loop)
     persistence.py     # Append-only JSONL: data/agent_sessions/<phone>_<session_id>.jsonl
   security/            # Defensa en profundidad para tool execution agéntica
     policy_engine.py   # PolicyEngine — evalúa regex YAML antes de ejecutar tools
@@ -92,14 +96,22 @@ app/
   commands/            # Sistema de comandos (/remember, /forget, etc)
   conversation/        # ConversationManager + Summarizer
   database/            # SQLite init + sqlite-vec + Repository
+  workspace/           # Project workspace engine, templates, delivery
+    engine.py          # WorkspaceEngine: create, switch, validate, propagate root
+    templates.py       # Template registry (html-static, python-fastapi, react-vite, nextjs)
+    delivery.py        # GitHub push, ZIP creation, preview server
   memory/              # Sistema de memoria
     markdown.py        # Sync bidireccional SQLite ↔ MEMORY.md
     watcher.py         # File watcher (watchdog) para edición manual de MEMORY.md
     daily_log.py       # Daily logs append-only + session snapshots
     consolidator.py    # Dedup/merge de memorias via LLM
+    session_extractor.py  # LLM-powered fact extraction every N messages (background)
+    dream.py           # Auto-Dream: background consolidation (4-phase prompt, scheduled)
+    consolidation_lock.py  # File-based lock + gate function para auto-dream
   eval/                # Dataset vivo + curación automática
     dataset.py         # maybe_curate_to_dataset() (3-tier), add_correction_pair()
     exporter.py        # export_to_jsonl() para tests offline
+    judge.py           # Multi-criteria LLM-as-judge (4 criterios, JSON output, Plan 60)
   mcp/                 # MCP server integration
 skills/                # SKILL.md definitions (configurable via skills_dir)
 tests/
@@ -141,10 +153,16 @@ El procesamiento de cada mensaje está paralelizado en fases:
 - Dependencies via `app.state.*` + funciones `get_*()` en `dependencies.py`
 - Mensajes se formatean (markdown→whatsapp/HTML) y splitean antes de enviar
 - Tool calling loop: LLM → tools → resultados → LLM → repite hasta texto o max 5 iteraciones
+- Budget-based compaction (Plan 58): before each LLM call, if estimated tokens > 80% of `CONTEXT_WINDOW_TOKENS` env var (default 32768), aggressively compact old tool results via `microcompact_messages` + `_clear_old_tool_results`
+- `apply_patch` requires unique search string match (or `replace_all=true`) — ambiguous matches return error with line numbers
+- `write_source_file` requires `overwrite=true` to replace existing files — prevents accidental overwrites by the LLM
+- `rg` (ripgrep) is an optional dependency for `grep_code` — falls back to `grep -rn` when unavailable
 - Dedup atomico: `processed_messages` tabla con INSERT OR IGNORE (sin race conditions)
 - Reply context: si el usuario responde a un mensaje, se inyecta el texto citado en el prompt
 - `OllamaClient.chat()` acepta `think: bool | None = None` — usar `think=False` OBLIGATORIO en todos los prompts binarios/JSON (guardrails, summarizer, consolidator, compaction, evolution, eval judge)
 - Calculator: AST safe eval con whitelist estricta, NO eval() directo
+- Subprocesos reciben env scrubbed via `_scrubbed_env()` — credenciales no disponibles (Plan 60)
+- `write_source_file` y `apply_patch` corren `check_code_security` en archivos de codigo — warning, no bloqueo (Plan 60)
 - Docker: container corre como `appuser` (UID=1000), no root
 - Embeddings best-effort: errores logueados, nunca propagados — la app funciona sin embeddings
 - `_run_normal_flow()` inner function en `router.py` — permite toggle de tracing sin duplicar lógica

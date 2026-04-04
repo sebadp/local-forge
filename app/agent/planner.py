@@ -367,6 +367,61 @@ async def replan(
         return None
 
 
+_REPLAN_WITH_FEEDBACK_PROMPT = """\
+You are revising a plan based on user feedback.
+
+OBJECTIVE: {objective}
+
+CURRENT PLAN:
+{current_plan}
+
+USER FEEDBACK: {feedback}
+
+Generate a revised plan that incorporates the user's feedback.
+Output ONLY a JSON object with the same format as the original plan:
+```json
+{{
+  "context_summary": "Updated summary",
+  "tasks": [...]
+}}
+```
+"""
+
+
+async def replan_with_feedback(
+    objective: str,
+    current_plan: AgentPlan,
+    user_feedback: str,
+    ollama_client: OllamaClient,
+) -> AgentPlan:
+    """Regenerate plan incorporating user's modification request."""
+    prompt = _REPLAN_WITH_FEEDBACK_PROMPT.format(
+        objective=objective,
+        current_plan=current_plan.to_markdown(),
+        feedback=user_feedback,
+    )
+    messages = [
+        ChatMessage(role="system", content=prompt),
+        ChatMessage(role="user", content=f"Revise the plan: {user_feedback}"),
+    ]
+
+    try:
+        trace = get_current_trace()
+        if trace:
+            async with trace.span("llm:planner_replan_feedback", kind="generation") as _span:
+                _span.set_input({"feedback": user_feedback[:200]})
+                response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
+                _span.set_output({"raw_preview": response.content[:200]})
+        else:
+            response = await ollama_client.chat_with_tools(messages, tools=None, think=True)
+        new_plan = _parse_plan_json(response.content, objective)
+        logger.info("Replanned with feedback: %d tasks", len(new_plan.tasks))
+        return new_plan
+    except Exception:
+        logger.exception("Replan with feedback failed, keeping current plan")
+        return current_plan
+
+
 async def synthesize(
     plan: AgentPlan,
     ollama_client: OllamaClient,

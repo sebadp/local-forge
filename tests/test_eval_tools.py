@@ -1,7 +1,8 @@
-"""Tests for eval tools — specifically the LLM-as-judge in run_quick_eval."""
+"""Tests for eval tools — specifically run_quick_eval with multi-criteria judge."""
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock
 
 
@@ -21,13 +22,21 @@ def _make_registry_and_register(repository_mock, ollama_mock):
     return registry
 
 
+def _judge_json(correctness=0.9, completeness=0.8, conciseness=0.7, tool_usage=1.0, reasoning="ok"):
+    return json.dumps({
+        "correctness": correctness, "completeness": completeness,
+        "conciseness": conciseness, "tool_usage": tool_usage,
+        "reasoning": reasoning,
+    })
+
+
 # ---------------------------------------------------------------------------
-# run_quick_eval — LLM-as-judge
+# run_quick_eval — multi-criteria LLM-as-judge
 # ---------------------------------------------------------------------------
 
 
-async def test_run_quick_eval_uses_llm_judge_yes():
-    """run_quick_eval must use LLM-as-judge (binary yes/no) — 'yes' → passed=True → ✅."""
+async def test_run_quick_eval_passes_with_high_scores():
+    """High judge scores → passed=True → ✅ in output."""
     repository_mock = AsyncMock()
     repository_mock.get_dataset_entries = AsyncMock(
         return_value=[
@@ -36,31 +45,29 @@ async def test_run_quick_eval_uses_llm_judge_yes():
                 "input_text": "¿Cuánto es 2+2?",
                 "output_text": "La respuesta es cuatro.",
                 "expected_output": "4",
+                "trace_id": "trace-1",
             }
         ]
     )
 
-    # chat is called twice: first for the actual response, then for the judge
+    # chat is called twice: inference response, then judge JSON
     ollama_mock = AsyncMock()
-    ollama_mock.chat = AsyncMock(side_effect=["La respuesta es cuatro.", "yes"])
+    ollama_mock.chat = AsyncMock(
+        side_effect=["La respuesta es cuatro.", _judge_json()]
+    )
 
     registry = _make_registry_and_register(repository_mock, ollama_mock)
     handler = registry._tools["run_quick_eval"].handler
     result = await handler(category="all")
 
-    # Judge prompt must contain "yes or no"
-    judge_call = ollama_mock.chat.call_args_list[1]
-    judge_messages = judge_call[0][0]
-    assert "yes" in judge_messages[0].content.lower()
-    assert "no" in judge_messages[0].content.lower()
-
-    # Result must show ✅ and 1/1
     assert "✅" in result
     assert "1/1" in result
+    # Multi-criteria scores should appear
+    assert "correctness" in result
 
 
-async def test_run_quick_eval_uses_llm_judge_no():
-    """'no' from judge → passed=False → ❌ in output."""
+async def test_run_quick_eval_fails_with_low_scores():
+    """Low judge scores → passed=False → ❌ in output."""
     repository_mock = AsyncMock()
     repository_mock.get_dataset_entries = AsyncMock(
         return_value=[
@@ -74,7 +81,9 @@ async def test_run_quick_eval_uses_llm_judge_no():
     )
 
     ollama_mock = AsyncMock()
-    ollama_mock.chat = AsyncMock(side_effect=["No sé.", "no"])
+    ollama_mock.chat = AsyncMock(
+        side_effect=["No sé.", _judge_json(correctness=0.1, completeness=0.1, conciseness=0.5)]
+    )
 
     registry = _make_registry_and_register(repository_mock, ollama_mock)
     handler = registry._tools["run_quick_eval"].handler
@@ -85,7 +94,7 @@ async def test_run_quick_eval_uses_llm_judge_no():
 
 
 async def test_run_quick_eval_judge_uses_think_false():
-    """Judge call must pass think=False to avoid chain-of-thought in binary prompt."""
+    """Judge call must pass think=False for deterministic JSON output."""
     repository_mock = AsyncMock()
     repository_mock.get_dataset_entries = AsyncMock(
         return_value=[
@@ -99,7 +108,7 @@ async def test_run_quick_eval_judge_uses_think_false():
     )
 
     ollama_mock = AsyncMock()
-    ollama_mock.chat = AsyncMock(side_effect=["Hola", "yes"])
+    ollama_mock.chat = AsyncMock(side_effect=["Hola", _judge_json()])
 
     registry = _make_registry_and_register(repository_mock, ollama_mock)
     handler = registry._tools["run_quick_eval"].handler
@@ -126,9 +135,7 @@ async def test_run_quick_eval_skips_entries_without_expected_output():
     handler = registry._tools["run_quick_eval"].handler
     result = await handler()
 
-    # No entries had expected_output — should get the "no entries" message
     assert "No correction entries" in result
-    # chat must NOT have been called (no entries to process)
     ollama_mock.chat.assert_not_called()
 
 
@@ -145,3 +152,35 @@ async def test_run_quick_eval_no_entries_returns_helpful_message():
 
     assert "No dataset entries" in result
     assert "add_to_dataset" in result
+
+
+async def test_run_quick_eval_records_trace_scores():
+    """When entry has trace_id, per-criterion scores are recorded via repository."""
+    repository_mock = AsyncMock()
+    repository_mock.get_dataset_entries = AsyncMock(
+        return_value=[
+            {
+                "id": 1,
+                "input_text": "test",
+                "output_text": "out",
+                "expected_output": "expected",
+                "trace_id": "trace-abc",
+            }
+        ]
+    )
+    repository_mock.save_trace_score = AsyncMock()
+
+    ollama_mock = AsyncMock()
+    ollama_mock.chat = AsyncMock(side_effect=["response", _judge_json()])
+
+    registry = _make_registry_and_register(repository_mock, ollama_mock)
+    handler = registry._tools["run_quick_eval"].handler
+    await handler()
+
+    # Should have 4 calls to save_trace_score (one per criterion)
+    assert repository_mock.save_trace_score.call_count == 4
+    score_names = [c.kwargs["name"] for c in repository_mock.save_trace_score.call_args_list]
+    assert "eval:correctness" in score_names
+    assert "eval:completeness" in score_names
+    assert "eval:conciseness" in score_names
+    assert "eval:tool_usage" in score_names

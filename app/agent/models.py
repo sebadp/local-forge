@@ -70,6 +70,33 @@ class AgentPlan:
                 return task
         return None
 
+    def ready_tasks(self) -> list[TaskStep]:
+        """Return all pending tasks whose dependencies are met (can run in parallel)."""
+        done_ids = {t.id for t in self.tasks if t.status == "done"}
+        failed_ids = {t.id for t in self.tasks if t.status == "failed"}
+
+        # Propagate failures first
+        changed = True
+        while changed:
+            changed = False
+            for task in self.tasks:
+                if task.status != "pending":
+                    continue
+                blocked_by = [d for d in task.depends_on if d in failed_ids]
+                if blocked_by:
+                    task.status = "failed"
+                    task.result = f"Blocked: dependency #{blocked_by[0]} failed"
+                    failed_ids.add(task.id)
+                    changed = True
+
+        ready = []
+        for task in self.tasks:
+            if task.status != "pending":
+                continue
+            if all(dep_id in done_ids for dep_id in task.depends_on):
+                ready.append(task)
+        return ready
+
     def all_done(self) -> bool:
         return all(t.status in ("done", "failed") for t in self.tasks)
 

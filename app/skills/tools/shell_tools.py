@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import shlex
 import time
 from dataclasses import dataclass, field
@@ -28,6 +29,50 @@ if TYPE_CHECKING:
     from app.skills.registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
+
+# --- Credential scrubbing for subprocesses (Plan 60) ---
+
+_SCRUB_EXACT: frozenset[str] = frozenset({
+    "WHATSAPP_ACCESS_TOKEN",
+    "WHATSAPP_APP_SECRET",
+    "WHATSAPP_VERIFY_TOKEN",
+    "GITHUB_TOKEN",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_PUBLIC_KEY",
+    "AUDIT_HMAC_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_WEBHOOK_SECRET",
+    "NGROK_AUTHTOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+})
+
+_SCRUB_SUFFIXES: tuple[str, ...] = (
+    "_SECRET", "_TOKEN", "_KEY", "_PASSWORD", "_CREDENTIAL",
+    "_API_KEY", "_ACCESS_KEY", "_SECRET_KEY",
+)
+
+# Keys that end with a scrub suffix but should be preserved
+_SCRUB_KEEP: frozenset[str] = frozenset({
+    "TERM_SESSION_ID",
+    "COLORTERM",
+})
+
+
+def _scrubbed_env() -> dict[str, str]:
+    """Return a copy of os.environ with sensitive variables removed."""
+    env = os.environ.copy()
+    to_remove: list[str] = []
+    for key in env:
+        if key in _SCRUB_KEEP:
+            continue
+        if key in _SCRUB_EXACT:
+            to_remove.append(key)
+        elif any(key.upper().endswith(s) for s in _SCRUB_SUFFIXES):
+            to_remove.append(key)
+    for key in to_remove:
+        del env[key]
+    return env
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -279,6 +324,7 @@ def register(registry: SkillRegistry, settings: Settings) -> None:
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.DEVNULL,
                 cwd=str(_PROJECT_ROOT),
+                env=_scrubbed_env(),
             )
             stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
@@ -336,6 +382,7 @@ def register(registry: SkillRegistry, settings: Settings) -> None:
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.DEVNULL,
                 cwd=str(_PROJECT_ROOT),
+                env=_scrubbed_env(),
             )
         except FileNotFoundError:
             return f"Error: command `{tokens[0]}` not found."
