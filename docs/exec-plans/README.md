@@ -45,6 +45,8 @@ Documentos técnicos que bajan una intención de producto a cambios concretos en
 | Claude Code Tooling & Code Mode — glob, grep, /code, budget compaction, git undo | [`58-claude_code_tooling_prd.md`](58-claude_code_tooling_prd.md) / [`58-claude_code_tooling_prp.md`](58-claude_code_tooling_prp.md) | ✅ Completado |
 | Claude Code Refinements — Edit UX, tool consolidation, Plan 58 fixes | [`59-claude_code_refinements_prd.md`](59-claude_code_refinements_prd.md) / [`59-claude_code_refinements_prp.md`](59-claude_code_refinements_prp.md) | ✅ Completado |
 | Eval & Security Hardening — Multi-criteria judge, code security patterns, credential scrubbing | [`60-eval_security_hardening_prd.md`](60-eval_security_hardening_prd.md) / [`60-eval_security_hardening_prp.md`](60-eval_security_hardening_prp.md) | ✅ Completado |
+| Guardrails & Eval Hardening — LLM checks, code security tracing, reactions, guardrails benchmark | [`61-guardrails_eval_hardening_prd.md`](61-guardrails_eval_hardening_prd.md) / [`61-guardrails_eval_hardening_prp.md`](61-guardrails_eval_hardening_prp.md) | ✅ Completado |
+| Benchmark Suite Expansion — Memory, plan, saturation, scheduled eval, dataset expansion | [`62-benchmark_suite_prd.md`](62-benchmark_suite_prd.md) / [`62-benchmark_suite_prp.md`](62-benchmark_suite_prp.md) | ✅ Completado |
 
 ## Convenciones
 

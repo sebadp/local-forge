@@ -62,6 +62,8 @@ Cada archivo en este directorio documenta una feature implementada: qué hace, c
 | Subagent Forking & Planning Mode | [`57-subagent_planning.md`](57-subagent_planning.md) | Exec Plan 57 |
 | Claude Code Tooling & Code Mode | [`58-claude_code_tooling.md`](58-claude_code_tooling.md) | Exec Plan 58 |
 | Claude Code Refinements | [`59-claude_code_refinements.md`](59-claude_code_refinements.md) | Exec Plan 59 |
+| Guardrails & Eval Hardening (code security trace, guardrails benchmark, reactions) | [`61-guardrails_eval_hardening.md`](61-guardrails_eval_hardening.md) | Exec Plan 61 |
+| Benchmark Suite Expansion (memory, plan, saturation, scheduled, dataset) | [`62-benchmark_suite.md`](62-benchmark_suite.md) | Exec Plan 62 |
 
 ## Cómo crear un nuevo walkthrough
 

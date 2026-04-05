@@ -45,7 +45,11 @@ _CODE_EXTENSIONS = {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", 
 
 
 def _security_warning(content: str, path: str, suffix: str) -> str:
-    """Run code security check and return warning text (empty if clean)."""
+    """Run code security check and return warning text (empty if clean).
+
+    Also records a trace score (code_security_warning=0.0) when a pattern is
+    detected, so security events are queryable from trace_scores.
+    """
     if suffix.lower() not in _CODE_EXTENSIONS:
         return ""
     try:
@@ -53,6 +57,25 @@ def _security_warning(content: str, path: str, suffix: str) -> str:
 
         result = check_code_security(content, path)
         if not result.passed:
+            # Persist to trace_scores for observability
+            try:
+                from app.tracing.context import get_current_trace
+
+                trace = get_current_trace()
+                if trace:
+                    import asyncio
+
+                    asyncio.ensure_future(
+                        trace.add_score(
+                            name="code_security_warning",
+                            value=0.0,
+                            source="system",
+                            comment=f"{path}: {result.details[:200]}",
+                        )
+                    )
+            except Exception:
+                pass  # best-effort, never block tool execution
+
             lines = result.details.split("; ")
             return (
                 "\n\n⚠️ **Security warning** — potentially unsafe patterns detected:\n"

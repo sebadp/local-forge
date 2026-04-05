@@ -8,6 +8,9 @@ Modes:
     classify    Level 1: test intent classification (fast, ~1-2s per entry)
     tools       Level 2: test classification + tool selection
     e2e         Level 3: full LLM-as-judge end-to-end (default, slow)
+    guardrails  Level G: run deterministic guardrail checks on responses (no LLM, <1s)
+    memory      Level M: test memory retrieval quality (Precision@5 + Recall)
+    plan        Level P: test agent plan quality (deterministic + LLM judge)
 
 Options:
     --db PATH           Path to SQLite database (default: data/localforge.db)
@@ -480,6 +483,242 @@ async def _run_tools(entries: list[dict], client: OllamaClient) -> list[dict]:
     return results
 
 
+async def _run_guardrails(entries: list[dict], client: OllamaClient) -> list[dict]:
+    """Level G: run deterministic guardrail checks on stored responses (no LLM needed)."""
+    from app.guardrails.pipeline import run_guardrails
+
+    results: list[dict] = []
+    for entry in entries:
+        meta = _parse_metadata(entry)
+        # Need both input and output to run guardrails
+        output = entry.get("output_text") or entry.get("expected_output") or ""
+        input_text = entry.get("input_text", "")
+        if not output:
+            continue
+
+        t0 = time.monotonic()
+        try:
+            report = await run_guardrails(
+                user_text=input_text,
+                reply=output,
+                tool_calls_used=bool(meta.get("expected_tools")),
+            )
+            elapsed = (time.monotonic() - t0) * 1000
+
+            # Per-check detail
+            check_details = {r.check_name: r.passed for r in report.results}
+            failed = [r.check_name for r in report.results if not r.passed]
+            score = sum(1.0 for r in report.results if r.passed) / len(report.results) if report.results else 1.0
+
+            results.append(
+                {
+                    "id": entry["id"],
+                    "section": meta.get("section", "?"),
+                    "passed": report.passed,
+                    "score": score,
+                    "input_preview": input_text[:50].replace("\n", " "),
+                    "detail": f"checks={check_details}" + (f" FAILED={failed}" if failed else ""),
+                    "criteria": check_details,
+                    "latency_ms": elapsed,
+                }
+            )
+        except Exception as exc:
+            elapsed = (time.monotonic() - t0) * 1000
+            results.append(
+                {
+                    "id": entry["id"],
+                    "section": meta.get("section", "?"),
+                    "passed": False,
+                    "score": 0.0,
+                    "input_preview": input_text[:50].replace("\n", " "),
+                    "detail": f"ERROR: {exc}",
+                    "latency_ms": elapsed,
+                }
+            )
+    return results
+
+
+async def _run_memory(entries: list[dict], client: OllamaClient) -> list[dict]:
+    """Level M: test memory retrieval quality (Precision@5 + Recall)."""
+    results: list[dict] = []
+    _settings_local = Settings()
+
+    conn_mem, _ = await init_db(_settings_local.database_path)
+    repo_mem = Repository(conn_mem)
+
+    for entry in entries:
+        meta = _parse_metadata(entry)
+        expected_keywords = meta.get("expected_memory_keywords", [])
+        if not expected_keywords:
+            continue
+
+        t0 = time.monotonic()
+        try:
+            # Embed the query and search for similar memories
+            emb_result = await client.embed(
+                [entry["input_text"][:500]], model=_settings_local.embedding_model
+            )
+            embedding = emb_result[0] if emb_result else None
+            if not embedding:
+                results.append({
+                    "id": entry["id"],
+                    "section": meta.get("section", "?"),
+                    "passed": False,
+                    "score": 0.0,
+                    "input_preview": entry["input_text"][:50].replace("\n", " "),
+                    "detail": "ERROR: embedding failed",
+                    "latency_ms": (time.monotonic() - t0) * 1000,
+                })
+                continue
+
+            memories = await repo_mem.search_similar_memories(embedding, top_k=5)
+            elapsed = (time.monotonic() - t0) * 1000
+
+            # Precision: how many returned memories contain expected keywords
+            relevant_count = 0
+            for mem in memories:
+                mem_lower = mem.lower()
+                if any(kw.lower() in mem_lower for kw in expected_keywords):
+                    relevant_count += 1
+            precision = relevant_count / len(memories) if memories else 0.0
+
+            # Recall: how many expected keywords were found in any memory
+            found_keywords = []
+            for kw in expected_keywords:
+                kw_lower = kw.lower()
+                if any(kw_lower in m.lower() for m in memories):
+                    found_keywords.append(kw)
+            recall = len(found_keywords) / len(expected_keywords) if expected_keywords else 0.0
+
+            score = (precision + recall) / 2.0
+            passed = score >= 0.3  # lenient threshold for new benchmark
+
+            results.append({
+                "id": entry["id"],
+                "section": meta.get("section", "?"),
+                "passed": passed,
+                "score": score,
+                "input_preview": entry["input_text"][:50].replace("\n", " "),
+                "detail": (
+                    f"P@5={precision:.0%} R={recall:.0%} "
+                    f"found={found_keywords} memories={len(memories)}"
+                ),
+                "latency_ms": elapsed,
+            })
+        except Exception as exc:
+            elapsed = (time.monotonic() - t0) * 1000
+            results.append({
+                "id": entry["id"],
+                "section": meta.get("section", "?"),
+                "passed": False,
+                "score": 0.0,
+                "input_preview": entry["input_text"][:50].replace("\n", " "),
+                "detail": f"ERROR: {exc}",
+                "latency_ms": elapsed,
+            })
+
+    await conn_mem.close()
+    return results
+
+
+async def _run_plan(entries: list[dict], client: OllamaClient) -> list[dict]:
+    """Level P: test agent plan quality (deterministic + LLM judge)."""
+    from app.agent.planner import create_plan
+
+    results: list[dict] = []
+    for entry in entries:
+        meta = _parse_metadata(entry)
+        expected_plan_tasks = meta.get("expected_plan_tasks")
+        expected_plan_categories = meta.get("expected_plan_categories", [])
+        if expected_plan_tasks is None and not expected_plan_categories:
+            continue
+
+        t0 = time.monotonic()
+        try:
+            plan = await create_plan(entry["input_text"], client)
+            elapsed = (time.monotonic() - t0) * 1000
+
+            # Deterministic scoring
+            det_score = 0.0
+            det_checks: dict[str, bool] = {}
+
+            # Check minimum task count
+            if expected_plan_tasks is not None:
+                has_enough = len(plan.tasks) >= expected_plan_tasks
+                det_checks["min_tasks"] = has_enough
+                det_score += 1.0 if has_enough else 0.0
+
+            # Check expected categories in task descriptions/tools
+            if expected_plan_categories:
+                plan_text = " ".join(
+                    f"{t.description} {' '.join(t.tools)}" for t in plan.tasks
+                ).lower()
+                found_cats = [c for c in expected_plan_categories if c.lower() in plan_text]
+                cat_score = len(found_cats) / len(expected_plan_categories)
+                det_checks["categories"] = cat_score >= 0.5
+                det_score += cat_score
+
+            n_checks = len(det_checks)
+            det_avg = det_score / n_checks if n_checks else 0.0
+
+            # LLM judge for coherence/completeness/feasibility
+            plan_text_full = "\n".join(
+                f"  {t.id}. [{t.worker_type}] {t.description} (tools: {', '.join(t.tools) or 'none'})"
+                for t in plan.tasks
+            )
+            judge_prompt = (
+                f"Evaluate this execution plan for the objective.\n\n"
+                f"OBJECTIVE: {entry['input_text']}\n\n"
+                f"PLAN:\n{plan_text_full}\n\n"
+                f"1. COHERENCE: Do the tasks logically follow from the objective? (YES/NO)\n"
+                f"2. COMPLETENESS: Does the plan cover the main steps needed? (YES/NO)\n"
+                f"3. FEASIBILITY: Are the tasks actionable and realistic? (YES/NO)\n"
+                f"VERDICT: Is this an acceptable plan? Reply PASS or FAIL."
+            )
+
+            try:
+                judge_resp = await client.chat_with_tools(
+                    [ChatMessage(role="user", content=judge_prompt)],
+                    tools=None,
+                    think=False,
+                )
+                judge_raw = judge_resp.content.strip() if judge_resp.content else ""
+                judge_result = _parse_judge_response(judge_raw, has_tools=False)
+                llm_score = judge_result["score"]
+            except Exception:
+                llm_score = 0.5  # neutral on judge failure
+
+            # Combined score: 50% deterministic + 50% LLM
+            combined = (det_avg + llm_score) / 2.0
+            passed = combined >= 0.4
+
+            results.append({
+                "id": entry["id"],
+                "section": meta.get("section", "?"),
+                "passed": passed,
+                "score": combined,
+                "input_preview": entry["input_text"][:50].replace("\n", " "),
+                "detail": (
+                    f"tasks={len(plan.tasks)} det={det_avg:.0%} llm={llm_score:.0%} "
+                    f"checks={det_checks}"
+                ),
+                "criteria": {**det_checks, "llm_quality": llm_score >= 0.5},
+                "latency_ms": elapsed,
+            })
+        except Exception as exc:
+            elapsed = (time.monotonic() - t0) * 1000
+            results.append({
+                "id": entry["id"],
+                "section": meta.get("section", "?"),
+                "passed": False,
+                "score": 0.0,
+                "input_preview": entry["input_text"][:50].replace("\n", " "),
+                "detail": f"ERROR: {exc}",
+                "latency_ms": elapsed,
+            })
+    return results
+
+
 async def _run_e2e(entries: list[dict], client: OllamaClient) -> list[dict]:
     """Level 3: LLM-as-judge end-to-end evaluation with tool support.
 
@@ -680,6 +919,15 @@ async def _run_eval(
             # e2e mode requires expected_output
             if mode == "e2e" and not e.get("expected_output"):
                 continue
+            # guardrails mode requires some text to check
+            if mode == "guardrails" and not (e.get("output_text") or e.get("expected_output")):
+                continue
+            # memory mode requires expected_memory_keywords
+            if mode == "memory" and not meta.get("expected_memory_keywords"):
+                continue
+            # plan mode requires expected_plan_tasks or expected_plan_categories
+            if mode == "plan" and not (meta.get("expected_plan_tasks") is not None or meta.get("expected_plan_categories")):
+                continue
             filtered.append(e)
 
         if not filtered:
@@ -701,6 +949,12 @@ async def _run_eval(
             results = await _run_classify(filtered, client)
         elif mode == "tools":
             results = await _run_tools(filtered, client)
+        elif mode == "guardrails":
+            results = await _run_guardrails(filtered, client)
+        elif mode == "memory":
+            results = await _run_memory(filtered, client)
+        elif mode == "plan":
+            results = await _run_plan(filtered, client)
         else:  # e2e
             results = await _run_e2e(filtered, client)
 
@@ -857,8 +1111,8 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         default="e2e",
-        choices=["classify", "tools", "e2e"],
-        help="Eval mode (default: e2e)",
+        choices=["classify", "tools", "e2e", "guardrails", "memory", "plan"],
+        help="Eval mode (default: e2e). guardrails=deterministic checks, memory=retrieval quality, plan=agent planning.",
     )
     parser.add_argument(
         "--entry-type",

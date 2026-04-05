@@ -46,6 +46,16 @@ Cada archivo en este directorio cubre el testing manual de una feature específi
 | Regression Eval Suite (seed, classify/tools/e2e, CI-compatible) | [`49-regression_eval_suite_testing.md`](49-regression_eval_suite_testing.md) |
 | Deep Web Research (composite search+fetch+chunk+embed+rank) | [`51-web_research_testing.md`](51-web_research_testing.md) |
 | Web Search Enhanced (depth param, auto-fetch, LLM extraction) | [`52-web_search_enhanced_testing.md`](52-web_search_enhanced_testing.md) |
+| Auto-Dream — Memory Consolidation (APScheduler, 4-phase, lock) | [`53-auto_dream_testing.md`](53-auto_dream_testing.md) |
+| MicroCompact & Lazy Tool Loading (selective clearing, discover_tools) | [`54-microcompact_lazy_tools_testing.md`](54-microcompact_lazy_tools_testing.md) |
+| Session Memory — LLM Fact Extraction (background, 5 categories) | [`55-session_memory_testing.md`](55-session_memory_testing.md) |
+| CodeGen Experience — Project Generation (workspace, templates, delivery) | [`56-codegen_experience_testing.md`](56-codegen_experience_testing.md) |
+| Subagent Fork & Planning Mode (HITL, parallel workers) | [`57-subagent_planning_testing.md`](57-subagent_planning_testing.md) |
+| Claude Code Tooling & Code Mode (glob, grep, git undo, /code, budget compaction) | [`58-claude_code_tooling_testing.md`](58-claude_code_tooling_testing.md) |
+| Claude Code Refinements (workspace-aware, apply_patch unicidad, write guard) | [`59-claude_code_refinements_testing.md`](59-claude_code_refinements_testing.md) |
+| Eval & Security Hardening (credential scrub, code security, multi-criteria judge) | [`60-eval_security_hardening_testing.md`](60-eval_security_hardening_testing.md) |
+| Guardrails & Eval Hardening (code security trace, guardrails benchmark, reactions) | [`61-guardrails_eval_hardening_testing.md`](61-guardrails_eval_hardening_testing.md) |
+| Benchmark Suite Expansion (memory, plan, saturation, scheduled eval) | [`62-benchmark_suite_testing.md`](62-benchmark_suite_testing.md) |
 
 ## Convenciones
 

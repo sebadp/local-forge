@@ -397,6 +397,65 @@ async def lifespan(app: FastAPI):
             len(await repository.get_all_automation_rules()),
         )
 
+    # Scheduled eval regression (Plan 62)
+    if settings.eval_scheduled_enabled:
+        _eval_settings = settings
+        _eval_repo = repository
+
+        async def _scheduled_eval() -> None:
+            """Run regression eval and persist score; alert if below threshold."""
+            try:
+                from scripts.run_eval import _run_eval
+
+                exit_code = await _run_eval(
+                    db_path=_eval_settings.database_path,
+                    ollama_url=_eval_settings.ollama_base_url,
+                    model=_eval_settings.ollama_model,
+                    mode=_eval_settings.eval_scheduled_mode,
+                    entry_type=None,
+                    limit=100,
+                    threshold=_eval_settings.eval_scheduled_threshold,
+                )
+                # Persist score
+                accuracy_pass = exit_code == 0
+                await _eval_repo.save_trace_score(
+                    trace_id=f"eval_scheduled_{_eval_settings.eval_scheduled_mode}",
+                    name=f"eval_regression_{_eval_settings.eval_scheduled_mode}",
+                    value=1.0 if accuracy_pass else 0.0,
+                    source="system",
+                    comment=f"scheduled eval exit_code={exit_code}",
+                )
+
+                if not accuracy_pass:
+                    admin_phone = _eval_settings.automation_admin_phone
+                    if admin_phone and hasattr(app.state, "whatsapp_client"):
+                        await app.state.whatsapp_client.send_message(
+                            admin_phone,
+                            f"⚠️ Scheduled eval FAILED (mode={_eval_settings.eval_scheduled_mode}, "
+                            f"threshold={_eval_settings.eval_scheduled_threshold:.0%}). "
+                            f"Run `make eval-{_eval_settings.eval_scheduled_mode}` for details.",
+                        )
+                        logger.warning("Scheduled eval FAILED, alert sent to %s", admin_phone)
+                    else:
+                        logger.warning("Scheduled eval FAILED (no admin phone for alert)")
+            except Exception:
+                logger.exception("Scheduled eval job failed")
+
+        from apscheduler.triggers.cron import CronTrigger as _EvalCronTrigger
+
+        scheduler.add_job(
+            _scheduled_eval,
+            trigger=_EvalCronTrigger(hour=settings.eval_scheduled_hour),
+            id="scheduled_eval",
+            replace_existing=True,
+        )
+        logger.info(
+            "Scheduled eval enabled (hour=%d UTC, mode=%s, threshold=%.0f%%)",
+            settings.eval_scheduled_hour,
+            settings.eval_scheduled_mode,
+            settings.eval_scheduled_threshold * 100,
+        )
+
     # Memory file watcher (bidirectional sync)
     memory_watcher = None
     if settings.memory_file_watch_enabled:

@@ -157,6 +157,10 @@ class Settings(BaseSettings):
 
     # Evaluation (Fase 3+)
     eval_auto_curate: bool = True
+    eval_scheduled_enabled: bool = False
+    eval_scheduled_hour: int = 4  # UTC
+    eval_scheduled_threshold: float = 0.7
+    eval_scheduled_mode: str = "classify"
 
     # Prompt versioning (Exec Plan 32)
     prompt_versioning_enabled: bool = True  # Seed & track prompt versions in DB
